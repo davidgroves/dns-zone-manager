@@ -1,0 +1,130 @@
+name: Release
+
+# Publishes the Python package to the Codeberg PyPI registry and the frontend +
+# backend container images to the Codeberg container registry whenever a version
+# tag (vX.Y.Z) is pushed.
+#
+# Requirements (configured in the repo on Codeberg):
+#   - Settings > Units: "Actions" enabled.
+#   - Settings > Actions > Secrets: PACKAGE_TOKEN = a Codeberg access token with
+#     "write:package" scope.
+#
+# Notes on Codeberg hosted runners (https://codeberg.org/actions/meta):
+#   - Default image is ghcr.io/catthehacker/ubuntu:act-latest.
+#   - Labels: codeberg-tiny / codeberg-small / codeberg-medium (max 10 min/job).
+#   - No Docker daemon is available, so images are built with Buildah using the
+#     vfs storage driver and chroot isolation.
+#   - The repository must be public to use the hosted runners.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+env:
+  REGISTRY: codeberg.org
+  REGISTRY_USER: davidgroves
+  IMAGE_NAMESPACE: codeberg.org/davidgroves/dns-zone-manager
+
+jobs:
+  pypi:
+    runs-on: codeberg-small
+    steps:
+      - name: Checkout (full history for hatch-vcs)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Mark workspace as a safe git directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Build sdist and wheel
+        run: uv build
+
+      - name: Publish to Codeberg PyPI registry
+        env:
+          UV_PUBLISH_USERNAME: ${{ env.REGISTRY_USER }}
+          UV_PUBLISH_PASSWORD: ${{ secrets.PACKAGE_TOKEN }}
+        run: |
+          uv publish \
+            --publish-url "https://codeberg.org/api/packages/${REGISTRY_USER}/pypi" \
+            dist/*
+
+  backend-image:
+    runs-on: codeberg-medium
+    steps:
+      - name: Checkout (full history for hatch-vcs)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Mark workspace as a safe git directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Install buildah
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends buildah
+
+      - name: Derive version from tag
+        id: meta
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push backend image
+        env:
+          STORAGE_DRIVER: vfs
+          BUILDAH_ISOLATION: chroot
+          VERSION: ${{ steps.meta.outputs.version }}
+          REGISTRY_TOKEN: ${{ secrets.PACKAGE_TOKEN }}
+        run: |
+          IMAGE="${IMAGE_NAMESPACE}/backend"
+          buildah login -u "$REGISTRY_USER" -p "$REGISTRY_TOKEN" "$REGISTRY"
+          buildah bud \
+            --storage-driver "$STORAGE_DRIVER" \
+            --isolation "$BUILDAH_ISOLATION" \
+            -f Dockerfile \
+            -t "${IMAGE}:${VERSION}" \
+            -t "${IMAGE}:latest" \
+            .
+          buildah push --storage-driver "$STORAGE_DRIVER" "${IMAGE}:${VERSION}"
+          buildah push --storage-driver "$STORAGE_DRIVER" "${IMAGE}:latest"
+
+  frontend-image:
+    runs-on: codeberg-medium
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install buildah
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends buildah
+
+      - name: Derive version from tag
+        id: meta
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push frontend image
+        env:
+          STORAGE_DRIVER: vfs
+          BUILDAH_ISOLATION: chroot
+          VERSION: ${{ steps.meta.outputs.version }}
+          REGISTRY_TOKEN: ${{ secrets.PACKAGE_TOKEN }}
+        run: |
+          IMAGE="${IMAGE_NAMESPACE}/frontend"
+          buildah login -u "$REGISTRY_USER" -p "$REGISTRY_TOKEN" "$REGISTRY"
+          buildah bud \
+            --storage-driver "$STORAGE_DRIVER" \
+            --isolation "$BUILDAH_ISOLATION" \
+            --build-arg "VERSION=${VERSION}" \
+            -f Dockerfile.frontend \
+            -t "${IMAGE}:${VERSION}" \
+            -t "${IMAGE}:latest" \
+            .
+          buildah push --storage-driver "$STORAGE_DRIVER" "${IMAGE}:${VERSION}"
+          buildah push --storage-driver "$STORAGE_DRIVER" "${IMAGE}:latest"

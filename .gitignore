@@ -7,7 +7,7 @@ __pycache__/
 *.so
 
 # hatch-vcs generated version file
-src/dns_api/_version.py
+backend/src/dns_zone_manager/_version.py
 
 # Distribution / packaging
 .Python
@@ -224,7 +224,7 @@ node_modules/
 package-lock.json
 
 # Vite build output (compiled from TypeScript)
-src/dns_api/static/js/app.js
+dist/
 
 test-results/
 test-coverage/

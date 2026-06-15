@@ -1,0 +1,70 @@
+$TTL 3600
+$ORIGIN test.local.
+
+; SOA Record
+@       IN      SOA     ns1.test.local. admin.test.local. (
+                        1                       ; Serial
+                        3600            ; refresh (1 hour)
+                        600             ; retry (10 minutes)
+                        604800          ; expire (1 week)
+                        300             ; minimum TTL (5 minutes)
+                        )
+
+; Name Servers
+@       IN      NS      ns1.test.local.
+
+; Name Server A Record
+ns1     IN      A       172.16.0.1
+
+; Simple A Records for testing
+test1   IN      A       172.16.1.1
+test2   IN      A       172.16.1.2
+test3   IN      A       172.16.1.3
+
+; Multiple A Records (round-robin)
+roundrobin      IN      A       172.16.2.1
+roundrobin      IN      A       172.16.2.2
+roundrobin      IN      A       172.16.2.3
+
+; AAAA Records for IPv6 testing
+ipv6-test       IN      AAAA    2001:db8:abcd::1
+dual-stack      IN      A       172.16.3.1
+dual-stack      IN      AAAA    2001:db8:abcd::2
+
+; CNAME Records
+alias1  IN      CNAME   test1.test.local.
+alias2  IN      CNAME   test2.test.local.
+chain1  IN      CNAME   alias1.test.local.
+
+; MX Records
+@       IN      MX      10 mail.test.local.
+@       IN      MX      20 mail-backup.test.local.
+mail    IN      A       172.16.4.1
+mail-backup     IN      A       172.16.4.2
+
+; TXT Records for testing
+@       IN      TXT     "Test zone for DNS API"
+info    IN      TXT     "This is a test TXT record"
+multiline       IN      TXT     "First part" "Second part" "Third part"
+spf     IN      TXT     "v=spf1 ip4:172.16.0.0/16 -all"
+
+; SRV Records
+_http._tcp      IN      SRV     10 50 8080 test1.test.local.
+_test._tcp      IN      SRV     10 50 9999 test2.test.local.
+
+; PTR-like records for testing (not actual reverse DNS)
+ptr-test        IN      A       172.16.5.1
+
+; Wildcard record
+*       IN      A       172.16.99.99
+
+; Records for search testing
+foo-service     IN      A       172.16.10.1
+bar-service     IN      A       172.16.10.2
+foo-api         IN      CNAME   foo-service.test.local.
+bar-api         IN      CNAME   bar-service.test.local.
+foobar          IN      A       172.16.10.3
+
+; CAA Record
+@       IN      CAA     0 issue ";"
+

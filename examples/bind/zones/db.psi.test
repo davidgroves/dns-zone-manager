@@ -1,0 +1,22 @@
+$TTL 3600
+$ORIGIN psi.test.
+
+; SOA Record
+@       IN      SOA     ns1.psi.test. admin.psi.test. (
+                        1                       ; Serial
+                        3600            ; refresh
+                        600             ; retry
+                        604800          ; expire
+                        300             ; minimum TTL
+                        )
+
+; Name Server
+@       IN      NS      ns1.psi.test.
+ns1     IN      A       192.0.2.1
+
+; Basic records
+@       IN      A       192.0.2.123
+www     IN      A       192.0.2.123
+mail    IN      A       192.0.2.223
+@       IN      MX      10 mail.psi.test.
+@       IN      TXT     "Example zone psi.test"

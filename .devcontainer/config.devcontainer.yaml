@@ -1,0 +1,74 @@
+# DNS Zone Manager - Devcontainer Configuration
+# ==============================================
+# Use this configuration when running inside the devcontainer.
+# BIND runs in a sibling container accessible at hostname 'bind'.
+#
+# Usage:
+#   uv run dns-zone-manager --config .devcontainer/config.devcontainer.yaml --reload
+
+# =============================================================================
+# TSIG Keys (referenced by name from dns and notify sections)
+# =============================================================================
+tsig_keys:
+  - name: dns-api-key
+    secret: K8vC2mP9nQ4rT6wX1yB3fG5hJ7kL0mN2pR4sU6vW8xY=
+    algorithm: hmac-sha256
+
+# DNS Server - connects to BIND container.
+# Uses the Compose service name "bind"; the API resolves it to the
+# container's current IP at startup, so no static network/IP is required.
+dns:
+  server: bind
+  port: 15353
+  timeout: 10.0
+  axfr_timeout: 60.0
+  update_tsig_key: dns-api-key
+
+# API Key Authentication
+api_key:
+  enabled: true
+  keys:
+    - name: admin
+      secret: demo-api-key-12345
+    - name: readonly
+      secret: another-key-67890
+
+# Azure AD disabled for local dev
+azure_ad:
+  enabled: false
+
+# Cache Configuration
+cache:
+  enabled: true
+  min_refresh_interval: 60
+  max_refresh_interval: 86400
+
+# Catalog Zone Configuration
+catalog:
+  enabled: true
+  zone_name: catalog.example.
+  poll_interval: 60
+  notify_bind_address: 0.0.0.0
+  notify_udp_port: 15355
+  notify_tcp_port: 15355
+  auto_load_zones: true
+  remove_stale_zones: false
+
+# NOTIFY Listener Configuration (for zone change notifications from BIND)
+notify:
+  enabled: true
+  bind_address: 0.0.0.0
+  udp_port: 15354
+  tcp_port: 15354
+  prefer_ixfr: true
+  require_tsig: false
+
+# Logging - use text format for local development (human-readable)
+logging:
+  format: json
+  level: DEBUG
+  sample_rate: 1.0
+  slow_threshold_ms: 1000
+
+# Enable debug mode
+debug: true

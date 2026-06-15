@@ -1,0 +1,22 @@
+$TTL 3600
+$ORIGIN theta.test.
+
+; SOA Record
+@       IN      SOA     ns1.theta.test. admin.theta.test. (
+                        1                       ; Serial
+                        3600            ; refresh
+                        600             ; retry
+                        604800          ; expire
+                        300             ; minimum TTL
+                        )
+
+; Name Server
+@       IN      NS      ns1.theta.test.
+ns1     IN      A       192.0.2.1
+
+; Basic records
+@       IN      A       192.0.2.108
+www     IN      A       192.0.2.108
+mail    IN      A       192.0.2.208
+@       IN      MX      10 mail.theta.test.
+@       IN      TXT     "Example zone theta.test"

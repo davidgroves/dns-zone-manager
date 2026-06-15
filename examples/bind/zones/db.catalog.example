@@ -1,0 +1,73 @@
+$ORIGIN catalog.example.
+$TTL 3600
+
+; SOA record
+@   IN  SOA ns.catalog.example. admin.catalog.example. (
+        1                       ; Serial
+        3600        ; refresh
+        600         ; retry
+        86400       ; expire
+        60          ; minimum TTL
+    )
+
+; NS record
+@   IN  NS  invalid.
+
+; Catalog zone version (RFC 9432)
+version IN  TXT "2"
+
+; Member zones are listed as PTR records under the "zones" subdomain
+; The owner name is a unique identifier (can be any unique string)
+; We use simple identifiers here for readability
+
+; Member zone: example.com
+example-com.zones       IN  PTR example.com.
+
+; Member zone: internal.corp
+internal-corp.zones     IN  PTR internal.corp.
+
+; Member zone: test.local
+test-local.zones        IN  PTR test.local.
+
+; Member zone: largezone.test (50,000 records for pagination testing)
+largezone-test.zones    IN  PTR largezone.test.
+
+; Reverse DNS zone for 192.0.2.0/24 (TEST-NET-1)
+reverse-192-0-2.zones   IN  PTR 2.0.192.in-addr.arpa.
+
+; Reverse DNS zone for 2001:db8::/32 (IPv6 documentation prefix)
+reverse-2001-db8.zones  IN  PTR 8.b.d.0.1.0.0.2.ip6.arpa.
+
+; Small test zones (25 zones for pagination testing)
+alpha-test.zones        IN  PTR alpha.test.
+beta-test.zones         IN  PTR beta.test.
+gamma-test.zones        IN  PTR gamma.test.
+delta-test.zones        IN  PTR delta.test.
+epsilon-test.zones      IN  PTR epsilon.test.
+zeta-test.zones         IN  PTR zeta.test.
+eta-test.zones          IN  PTR eta.test.
+theta-test.zones        IN  PTR theta.test.
+iota-test.zones         IN  PTR iota.test.
+kappa-test.zones        IN  PTR kappa.test.
+lambda-test.zones       IN  PTR lambda.test.
+mu-test.zones           IN  PTR mu.test.
+nu-test.zones           IN  PTR nu.test.
+xi-test.zones           IN  PTR xi.test.
+omicron-test.zones      IN  PTR omicron.test.
+pi-test.zones           IN  PTR pi.test.
+rho-test.zones          IN  PTR rho.test.
+sigma-test.zones        IN  PTR sigma.test.
+tau-test.zones          IN  PTR tau.test.
+upsilon-test.zones      IN  PTR upsilon.test.
+phi-test.zones          IN  PTR phi.test.
+chi-test.zones          IN  PTR chi.test.
+psi-test.zones          IN  PTR psi.test.
+omega-test.zones        IN  PTR omega.test.
+final-test.zones        IN  PTR final.test.
+
+; IDN test zone with internationalized domain names in punycode
+idn-test.zones          IN  PTR idn.test.
+
+; Thai IDN zone: โดเมนทดสอบ (test domain in Thai)
+thai-idn.zones          IN  PTR xn--l3caihh2b1dya9nsa.
+

@@ -1,0 +1,22 @@
+$TTL 3600
+$ORIGIN eta.test.
+
+; SOA Record
+@       IN      SOA     ns1.eta.test. admin.eta.test. (
+                        1                       ; Serial
+                        3600            ; refresh
+                        600             ; retry
+                        604800          ; expire
+                        300             ; minimum TTL
+                        )
+
+; Name Server
+@       IN      NS      ns1.eta.test.
+ns1     IN      A       192.0.2.1
+
+; Basic records
+@       IN      A       192.0.2.107
+www     IN      A       192.0.2.107
+mail    IN      A       192.0.2.207
+@       IN      MX      10 mail.eta.test.
+@       IN      TXT     "Example zone eta.test"

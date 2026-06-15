@@ -1,0 +1,333 @@
+// BIND configuration for devcontainer environment
+// This configuration is for development/testing purposes only
+
+options {
+    directory "/var/cache/bind";
+    
+    // Listen on non-privileged port for dev (avoids root, conflicts)
+    listen-on port 15353 { any; };
+    listen-on-v6 port 15353 { any; };
+    
+    // Allow queries from anywhere (dev only!)
+    allow-query { any; };
+    
+    // Disable recursion - authoritative only
+    recursion no;
+    allow-recursion { none; };
+    
+    // Disable DNSSEC validation for simplicity
+    dnssec-validation no;
+    
+    // Query logging disabled - see logging section
+    querylog no;
+    
+    // Send NOTIFY to the dev container for zone updates.
+    // The dev container's IP is not known ahead of time (random Docker
+    // subnet), so the entrypoint resolves the "dev" service name to its
+    // current IP at runtime and writes the also-notify target into this
+    // include file (then runs `rndc reconfig`). It starts empty.
+    notify explicit;
+    include "/var/lib/bind/also-notify.conf";
+
+    // Do IXFR
+    provide-ixfr yes;
+    
+    // Zone history feature
+    ixfr-from-differences yes;
+    max-journal-size 100M;
+    max-ixfr-ratio unlimited;
+    
+    // Use Unix timestamp for SOA serial numbers
+    serial-update-method unixtime;
+};
+
+// TSIG key for authenticated dynamic updates
+key "dns-api-key" {
+    algorithm hmac-sha256;
+    secret "K8vC2mP9nQ4rT6wX1yB3fG5hJ7kL0mN2pR4sU6vW8xY=";
+};
+
+// RNDC key for server administration
+key "rndc-key" {
+    algorithm hmac-sha256;
+    secret "xT7J2kLpN9qRvW4mY8sF1gH5bC3dE6aZ0iO7uP2wX4c=";
+};
+
+// Remote control configuration - allow from docker networks
+controls {
+    inet * port 953 allow { any; } keys { "rndc-key"; };
+};
+
+// Logging configuration
+logging {
+    channel default_log {
+        stderr;
+        severity info;
+        print-time yes;
+        print-category yes;
+        print-severity yes;
+    };
+    channel update_log {
+        stderr;
+        severity debug;
+        print-time yes;
+        print-category yes;
+    };
+    channel null_log {
+        null;
+    };
+    category default { default_log; };
+    category update { update_log; };
+    category xfer-in { default_log; };
+    category xfer-out { default_log; };
+    category security { default_log; };
+    category queries { null_log; };
+};
+
+// Zone: example.com - General purpose example zone
+zone "example.com" {
+    type primary;
+    file "/var/lib/bind/db.example.com";
+    allow-update { key "dns-api-key"; };
+    allow-transfer { key "dns-api-key"; };
+};
+
+// Zone: internal.corp - Internal corporate zone
+zone "internal.corp" {
+    type primary;
+    file "/var/lib/bind/db.internal.corp";
+    allow-update { key "dns-api-key"; };
+    allow-transfer { key "dns-api-key"; };
+};
+
+// Zone: test.local - Test/experimentation zone
+zone "test.local" {
+    type primary;
+    file "/var/lib/bind/db.test.local";
+    allow-update { key "dns-api-key"; };
+    allow-transfer { key "dns-api-key"; };
+};
+
+// Zone: largezone.test - Large zone with 50,000 records for pagination testing
+zone "largezone.test" {
+    type primary;
+    file "/var/lib/bind/db.largezone.test";
+    allow-update { key "dns-api-key"; };
+    allow-transfer { key "dns-api-key"; };
+};
+
+// Reverse DNS zone for 192.0.2.0/24 (TEST-NET-1)
+zone "2.0.192.in-addr.arpa" {
+    type primary;
+    file "/var/lib/bind/db.2.0.192.in-addr.arpa";
+    allow-update { key "dns-api-key"; };
+    allow-transfer { key "dns-api-key"; };
+};
+
+// Reverse DNS zone for 2001:db8::/32 (IPv6 documentation prefix)
+zone "8.b.d.0.1.0.0.2.ip6.arpa" {
+    type primary;
+    file "/var/lib/bind/db.8.b.d.0.1.0.0.2.ip6.arpa";
+    allow-update { key "dns-api-key"; };
+    allow-transfer { key "dns-api-key"; };
+};
+
+// Small test zones (25 zones for zone pagination testing)
+zone "alpha.test" {
+    type primary;
+    file "/var/lib/bind/db.alpha.test";
+    allow-update { key "dns-api-key"; };
+    allow-transfer { key "dns-api-key"; };
+};
+
+zone "beta.test" {
+    type primary;
+    file "/var/lib/bind/db.beta.test";
+    allow-update { key "dns-api-key"; };
+    allow-transfer { key "dns-api-key"; };
+};
+
+zone "gamma.test" {
+    type primary;
+    file "/var/lib/bind/db.gamma.test";
+    allow-update { key "dns-api-key"; };
+    allow-transfer { key "dns-api-key"; };
+};
+
+zone "delta.test" {
+    type primary;
+    file "/var/lib/bind/db.delta.test";
+    allow-update { key "dns-api-key"; };
+    allow-transfer { key "dns-api-key"; };
+};
+
+zone "epsilon.test" {
+    type primary;
+    file "/var/lib/bind/db.epsilon.test";
+    allow-update { key "dns-api-key"; };
+    allow-transfer { key "dns-api-key"; };
+};
+
+zone "zeta.test" {
+    type primary;
+    file "/var/lib/bind/db.zeta.test";
+    allow-update { key "dns-api-key"; };
+    allow-transfer { key "dns-api-key"; };
+};
+
+zone "eta.test" {
+    type primary;
+    file "/var/lib/bind/db.eta.test";
+    allow-update { key "dns-api-key"; };
+    allow-transfer { key "dns-api-key"; };
+};
+
+zone "theta.test" {
+    type primary;
+    file "/var/lib/bind/db.theta.test";
+    allow-update { key "dns-api-key"; };
+    allow-transfer { key "dns-api-key"; };
+};
+
+zone "iota.test" {
+    type primary;
+    file "/var/lib/bind/db.iota.test";
+    allow-update { key "dns-api-key"; };
+    allow-transfer { key "dns-api-key"; };
+};
+
+zone "kappa.test" {
+    type primary;
+    file "/var/lib/bind/db.kappa.test";
+    allow-update { key "dns-api-key"; };
+    allow-transfer { key "dns-api-key"; };
+};
+
+zone "lambda.test" {
+    type primary;
+    file "/var/lib/bind/db.lambda.test";
+    allow-update { key "dns-api-key"; };
+    allow-transfer { key "dns-api-key"; };
+};
+
+zone "mu.test" {
+    type primary;
+    file "/var/lib/bind/db.mu.test";
+    allow-update { key "dns-api-key"; };
+    allow-transfer { key "dns-api-key"; };
+};
+
+zone "nu.test" {
+    type primary;
+    file "/var/lib/bind/db.nu.test";
+    allow-update { key "dns-api-key"; };
+    allow-transfer { key "dns-api-key"; };
+};
+
+zone "xi.test" {
+    type primary;
+    file "/var/lib/bind/db.xi.test";
+    allow-update { key "dns-api-key"; };
+    allow-transfer { key "dns-api-key"; };
+};
+
+zone "omicron.test" {
+    type primary;
+    file "/var/lib/bind/db.omicron.test";
+    allow-update { key "dns-api-key"; };
+    allow-transfer { key "dns-api-key"; };
+};
+
+zone "pi.test" {
+    type primary;
+    file "/var/lib/bind/db.pi.test";
+    allow-update { key "dns-api-key"; };
+    allow-transfer { key "dns-api-key"; };
+};
+
+zone "rho.test" {
+    type primary;
+    file "/var/lib/bind/db.rho.test";
+    allow-update { key "dns-api-key"; };
+    allow-transfer { key "dns-api-key"; };
+};
+
+zone "sigma.test" {
+    type primary;
+    file "/var/lib/bind/db.sigma.test";
+    allow-update { key "dns-api-key"; };
+    allow-transfer { key "dns-api-key"; };
+};
+
+zone "tau.test" {
+    type primary;
+    file "/var/lib/bind/db.tau.test";
+    allow-update { key "dns-api-key"; };
+    allow-transfer { key "dns-api-key"; };
+};
+
+zone "upsilon.test" {
+    type primary;
+    file "/var/lib/bind/db.upsilon.test";
+    allow-update { key "dns-api-key"; };
+    allow-transfer { key "dns-api-key"; };
+};
+
+zone "phi.test" {
+    type primary;
+    file "/var/lib/bind/db.phi.test";
+    allow-update { key "dns-api-key"; };
+    allow-transfer { key "dns-api-key"; };
+};
+
+zone "chi.test" {
+    type primary;
+    file "/var/lib/bind/db.chi.test";
+    allow-update { key "dns-api-key"; };
+    allow-transfer { key "dns-api-key"; };
+};
+
+zone "psi.test" {
+    type primary;
+    file "/var/lib/bind/db.psi.test";
+    allow-update { key "dns-api-key"; };
+    allow-transfer { key "dns-api-key"; };
+};
+
+zone "omega.test" {
+    type primary;
+    file "/var/lib/bind/db.omega.test";
+    allow-update { key "dns-api-key"; };
+    allow-transfer { key "dns-api-key"; };
+};
+
+zone "final.test" {
+    type primary;
+    file "/var/lib/bind/db.final.test";
+    allow-update { key "dns-api-key"; };
+    allow-transfer { key "dns-api-key"; };
+};
+
+// Zone: idn.test - Internationalized Domain Name test zone with punycode IDNs
+zone "idn.test" {
+    type primary;
+    file "/var/lib/bind/db.idn.test";
+    allow-update { key "dns-api-key"; };
+    allow-transfer { key "dns-api-key"; };
+};
+
+// Zone: Thai test domain - IDN zone with Thai name
+zone "xn--l3caihh2b1dya9nsa" {
+    type primary;
+    file "/var/lib/bind/db.xn--l3caihh2b1dya9nsa";
+    allow-update { key "dns-api-key"; };
+    allow-transfer { key "dns-api-key"; };
+};
+
+// Catalog zone (RFC 9432) - Lists all member zones for auto-discovery
+zone "catalog.example" {
+    type primary;
+    file "/var/lib/bind/db.catalog.example";
+    allow-update { key "dns-api-key"; };
+    allow-transfer { key "dns-api-key"; };
+};

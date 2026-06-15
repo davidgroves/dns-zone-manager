@@ -1,0 +1,22 @@
+$TTL 3600
+$ORIGIN delta.test.
+
+; SOA Record
+@       IN      SOA     ns1.delta.test. admin.delta.test. (
+                        1                       ; Serial
+                        3600            ; refresh
+                        600             ; retry
+                        604800          ; expire
+                        300             ; minimum TTL
+                        )
+
+; Name Server
+@       IN      NS      ns1.delta.test.
+ns1     IN      A       192.0.2.1
+
+; Basic records
+@       IN      A       192.0.2.104
+www     IN      A       192.0.2.104
+mail    IN      A       192.0.2.204
+@       IN      MX      10 mail.delta.test.
+@       IN      TXT     "Example zone delta.test"

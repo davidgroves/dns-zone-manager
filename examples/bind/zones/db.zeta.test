@@ -1,0 +1,22 @@
+$TTL 3600
+$ORIGIN zeta.test.
+
+; SOA Record
+@       IN      SOA     ns1.zeta.test. admin.zeta.test. (
+                        1                       ; Serial
+                        3600            ; refresh
+                        600             ; retry
+                        604800          ; expire
+                        300             ; minimum TTL
+                        )
+
+; Name Server
+@       IN      NS      ns1.zeta.test.
+ns1     IN      A       192.0.2.1
+
+; Basic records
+@       IN      A       192.0.2.106
+www     IN      A       192.0.2.106
+mail    IN      A       192.0.2.206
+@       IN      MX      10 mail.zeta.test.
+@       IN      TXT     "Example zone zeta.test"

@@ -1,0 +1,46 @@
+$TTL 3600
+$ORIGIN xn--l3caihh2b1dya9nsa.
+
+; SOA Record for โดเมนทดสอบ (Thai: "test domain")
+@       IN      SOA     ns1.xn--l3caihh2b1dya9nsa. admin.xn--l3caihh2b1dya9nsa. (
+                        1                       ; Serial
+                        3600            ; refresh (1 hour)
+                        600             ; retry (10 minutes)
+                        604800          ; expire (1 week)
+                        300             ; minimum TTL (5 minutes)
+                        )
+
+; Name Servers
+@       IN      NS      ns1.xn--l3caihh2b1dya9nsa.
+ns1     IN      A       192.0.2.1
+
+; Root record
+@       IN      A       192.0.2.200
+@       IN      TXT     "Thai IDN Test Zone: โดเมนทดสอบ (test domain)"
+
+; =============================================================================
+; Thai labels within this zone
+; ทดสอบ (test) = xn--l3cfk7dp
+; เว็บ (web) = xn--r3cz4e3a
+; เมล (mail) = xn--y3ci3f
+; =============================================================================
+
+; Test subdomain
+xn--l3cfk7dp            IN      A       192.0.2.201
+xn--l3cfk7dp            IN      TXT     "Thai: ทดสอบ (test)"
+
+; Web subdomain  
+xn--r3cz4e3a            IN      A       192.0.2.202
+xn--r3cz4e3a            IN      TXT     "Thai: เว็บ (web)"
+
+; Mail subdomain
+xn--y3ci3f              IN      A       192.0.2.203
+xn--y3ci3f              IN      MX      10 mail.xn--l3caihh2b1dya9nsa.
+xn--y3ci3f              IN      TXT     "Thai: เมล (mail)"
+
+; Standard ASCII subdomains
+www                     IN      CNAME   xn--l3caihh2b1dya9nsa.
+mail                    IN      A       192.0.2.210
+api                     IN      A       192.0.2.211
+
+

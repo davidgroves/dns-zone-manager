@@ -1,0 +1,105 @@
+$TTL 3600
+$ORIGIN idn.test.
+
+; SOA Record
+@       IN      SOA     ns1.idn.test. admin.idn.test. (
+                        1                       ; Serial
+                        3600            ; refresh (1 hour)
+                        600             ; retry (10 minutes)
+                        604800          ; expire (1 week)
+                        300             ; minimum TTL (5 minutes)
+                        )
+
+; Name Servers
+@       IN      NS      ns1.idn.test.
+ns1     IN      A       192.0.2.1
+
+; Root record
+@       IN      A       192.0.2.100
+@       IN      TXT     "Internationalized Domain Name Test Zone"
+
+; =============================================================================
+; Chinese (Han script)
+; 测试 (test) = xn--0zwm56d
+; 例子 (example) = xn--fsqu00a
+; 网站 (website) = xn--5tzm5g
+; =============================================================================
+xn--0zwm56d             IN      A       192.0.2.10
+xn--0zwm56d             IN      TXT     "Chinese: 测试 (test)"
+xn--fsqu00a             IN      A       192.0.2.11
+xn--fsqu00a             IN      TXT     "Chinese: 例子 (example)"
+xn--5tzm5g              IN      A       192.0.2.12
+xn--5tzm5g              IN      TXT     "Chinese: 网站 (website)"
+xn--fiq228c             IN      A       192.0.2.13
+xn--fiq228c             IN      TXT     "Chinese: 中文 (Chinese)"
+
+; =============================================================================
+; Arabic (Arabic script)
+; اختبار (test) = xn--kgbechtv
+; مثال (example) = xn--mgbh0fb
+; موقع (site) = xn--mgbqly7c0a67fbc
+; =============================================================================
+xn--kgbechtv            IN      A       192.0.2.20
+xn--kgbechtv            IN      TXT     "Arabic: اختبار (test)"
+xn--mgbh0fb             IN      A       192.0.2.21
+xn--mgbh0fb             IN      TXT     "Arabic: مثال (example)"
+xn--mgbqly7c0a67fbc     IN      A       192.0.2.22
+xn--mgbqly7c0a67fbc     IN      TXT     "Arabic: موقع (site)"
+xn--wgbh1c              IN      A       192.0.2.23
+xn--wgbh1c              IN      TXT     "Arabic: مصر (Egypt)"
+
+; =============================================================================
+; Russian (Cyrillic script)
+; тест (test) = xn--e1afmkfd
+; пример (example) = xn--e1afmkfd
+; сайт (site) = xn--80aswg
+; =============================================================================
+xn--e1afmkfd            IN      A       192.0.2.30
+xn--e1afmkfd            IN      TXT     "Russian: тест (test)"
+xn--80aswg              IN      A       192.0.2.31
+xn--80aswg              IN      TXT     "Russian: сайт (site)"
+xn--p1ai                IN      A       192.0.2.32
+xn--p1ai                IN      TXT     "Russian: рф (RF/Russia)"
+xn--d1acufc             IN      A       192.0.2.33
+xn--d1acufc             IN      TXT     "Russian: бел (Belarus)"
+
+; =============================================================================
+; Japanese (Katakana)
+; テスト (test) = xn--zckzah
+; サンプル (sample) = xn--pckua5a7ds73t
+; ウェブ (web) = xn--eckwd4c7c
+; =============================================================================
+xn--zckzah              IN      A       192.0.2.40
+xn--zckzah              IN      TXT     "Japanese: テスト (test)"
+xn--pckua5a7ds73t       IN      A       192.0.2.41
+xn--pckua5a7ds73t       IN      TXT     "Japanese: サンプル (sample)"
+xn--eckwd4c7c           IN      A       192.0.2.42
+xn--eckwd4c7c           IN      TXT     "Japanese: ウェブ (web)"
+xn--wgv71a              IN      A       192.0.2.43
+xn--wgv71a              IN      TXT     "Japanese: 日本 (Japan)"
+
+; =============================================================================
+; Greek (Greek script)
+; δοκιμή (test) = xn--jxalpdlp
+; παράδειγμα (example) = xn--hxargifdar
+; ελλάδα (Greece) = xn--qxam
+; =============================================================================
+xn--jxalpdlp            IN      A       192.0.2.50
+xn--jxalpdlp            IN      TXT     "Greek: δοκιμή (test)"
+xn--hxargifdar          IN      A       192.0.2.51
+xn--hxargifdar          IN      TXT     "Greek: παράδειγμα (example)"
+xn--qxam                IN      A       192.0.2.52
+xn--qxam                IN      TXT     "Greek: ελ (Greece)"
+xn--mxacd0f             IN      A       192.0.2.53
+xn--mxacd0f             IN      TXT     "Greek: κόσμος (world)"
+
+; =============================================================================
+; Bonus: Mixed examples with subdomains
+; =============================================================================
+www.xn--0zwm56d         IN      CNAME   xn--0zwm56d.idn.test.
+mail.xn--kgbechtv       IN      A       192.0.2.120
+api.xn--e1afmkfd        IN      A       192.0.2.130
+shop.xn--zckzah         IN      A       192.0.2.140
+info.xn--jxalpdlp       IN      A       192.0.2.150
+
+

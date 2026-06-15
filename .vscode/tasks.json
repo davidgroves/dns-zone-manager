@@ -1,0 +1,187 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "BACKEND",
+      "type": "shell",
+      "command": "uv run dns-zone-manager --config .devcontainer/config.devcontainer.yaml --reload --reload-delay 1",
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "isBackground": true,
+      "runOptions": {
+        "instanceLimit": 1
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "BACKEND (Local)",
+      "type": "shell",
+      "command": "uv run dns-zone-manager --config examples/config.dev.yaml --reload",
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "FRONTEND",
+      "type": "shell",
+      "command": "npm run dev",
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "BIND",
+      "type": "shell",
+      "command": "sudo docker logs -f dns-zone-manager_devcontainer-bind-1",
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "Run All",
+      "dependsOn": ["BACKEND", "FRONTEND", "BIND"],
+      "dependsOrder": "parallel",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Start Frontend + BIND",
+      "dependsOn": ["FRONTEND", "BIND"],
+      "dependsOrder": "parallel",
+      "problemMatcher": []
+    },
+    {
+      "label": "Run All (Local)",
+      "dependsOn": ["BACKEND (Local)", "FRONTEND"],
+      "dependsOrder": "parallel",
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Shutdown All",
+      "type": "shell",
+      "command": "echo '\\n📋 To stop all running services:\\n\\n   Press Ctrl+Shift+P → \"Terminal: Kill All Terminals\"\\n\\n   Or click the trash icon in each terminal panel.\\n'",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Rebuild Dev Container",
+      "type": "shell",
+      "command": "echo '\\n📋 To rebuild the dev container:\\n\\n   1. Stop services: Ctrl+Shift+P → \"Terminal: Kill All Terminals\"\\n   2. Rebuild: Ctrl+Shift+P → \"Dev Containers: Rebuild Container\"\\n\\nThis will rebuild the container image and restart all services.\\n'",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Run All Tests",
+      "type": "shell",
+      "command": "uv run pytest && npm run test",
+      "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Run Backend Tests",
+      "type": "shell",
+      "command": "uv run pytest",
+      "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Run Backend Unit Tests",
+      "type": "shell",
+      "command": "uv run pytest tests/unit/",
+      "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Run Frontend Tests",
+      "type": "shell",
+      "command": "npm run test",
+      "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Run E2E Tests",
+      "type": "shell",
+      "command": "npm run test:e2e",
+      "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Lint All",
+      "type": "shell",
+      "command": "uv run ruff check backend/src tests && npm run lint",
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Format All",
+      "type": "shell",
+      "command": "uv run ruff format backend/src tests && npm run format",
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Type Check",
+      "type": "shell",
+      "command": "uv run ty check backend/src && npm run typecheck",
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    }
+  ]
+}

@@ -1,0 +1,192 @@
+# DNS Zone Manager Configuration
+# ===============================
+# Copy this file to config.yaml and customize as needed.
+#
+# Usage:
+#   dns-zone-manager --config config.yaml
+#
+# Priority: YAML config > environment variables > defaults
+
+# =============================================================================
+# TSIG Keys (referenced by name from dns and notify sections)
+# =============================================================================
+# Define all TSIG keys here. Other sections reference them by name.
+# This allows you to use different keys for different purposes:
+# - Update key: For DDNS updates (add/delete/modify records)
+# - AXFR key: For zone transfers (can be the same or different)
+# - Notify key: For NOTIFY message authentication
+#
+# Generate new keys with: tsig-keygen -a hmac-sha256 <key-name>
+
+tsig_keys:
+  # Primary update key for DDNS operations
+  - name: update-key
+    secret: K8vC2mP9nQ4rT6wX1yB3fG5hJ7kL0mN2pR4sU6vW8xY=
+    algorithm: hmac-sha256
+
+  # Optional: Separate key for zone transfers (if your DNS server uses different keys)
+  # - name: axfr-key
+  #   secret: A1bC2dE3fG4hI5jK6lM7nO8pQ9rS0tU1vW2xY3zA4bC=
+  #   algorithm: hmac-sha256
+
+  # Optional: Separate key for NOTIFY authentication
+  # - name: notify-key
+  #   secret: Z9yX8wV7uT6sR5qP4oN3mL2kJ1iH0gF9eD8cB7aA6zY=
+  #   algorithm: hmac-sha256
+
+# =============================================================================
+# DNS Server Configuration
+# =============================================================================
+dns:
+  # DNS server hostname or IP address (REQUIRED).
+  # A hostname (e.g. a Docker Compose service name like "bind") is resolved
+  # to an IP at startup, so static network addresses are not required.
+  server: bind
+
+  # DNS server port (standard is 53)
+  port: 53
+
+  # DNS TCP port for AXFR/DDNS (defaults to port if not set)
+  # tcp_port: 53
+
+  # Query timeout in seconds
+  timeout: 10.0
+
+  # AXFR zone transfer timeout in seconds
+  axfr_timeout: 60.0
+
+  # TSIG key name for DDNS updates (references tsig_keys entry)
+  update_tsig_key: update-key
+
+  # TSIG key name for AXFR transfers (defaults to update_tsig_key if not set)
+  # axfr_tsig_key: axfr-key
+
+# =============================================================================
+# API Key Authentication
+# =============================================================================
+api_key:
+  # Enable API key authentication
+  enabled: true
+
+  # Header name for API key (default: X-API-Key)
+  header_name: X-API-Key
+
+  # Named API keys - the name is used in audit logs to identify who made changes
+  keys:
+    - name: alice
+      secret: demo-api-key-12345
+    - name: bob
+      secret: another-key-67890
+
+# =============================================================================
+# Azure AD Authentication (optional)
+# =============================================================================
+azure_ad:
+  # Enable Azure AD authentication
+  enabled: false
+
+  # Azure AD tenant ID
+  tenant_id: ""
+
+  # Azure AD application client ID
+  client_id: ""
+
+  # OAuth2 scopes (list)
+  scopes:
+    - api://dns-zone-manager/.default
+
+# =============================================================================
+# Zone Cache Configuration
+# =============================================================================
+cache:
+  # Enable zone caching (improves performance)
+  enabled: true
+
+  # Minimum zone refresh interval in seconds (floor for SOA refresh)
+  min_refresh_interval: 60
+
+  # Maximum zone refresh interval in seconds (ceiling for SOA refresh)
+  max_refresh_interval: 86400
+
+  # Maximum cache size in bytes (0 = unlimited, default: 1GB)
+  max_size_bytes: 1073741824
+
+# =============================================================================
+# NOTIFY Listener Configuration
+# =============================================================================
+notify:
+  # Enable NOTIFY listener for zone change notifications
+  enabled: true
+
+  # Address to bind NOTIFY listeners to
+  bind_address: 0.0.0.0
+
+  # UDP port for NOTIFY listener
+  udp_port: 5354
+
+  # TCP port for NOTIFY listener
+  tcp_port: 5354
+
+  # Prefer IXFR over AXFR when refreshing zones
+  prefer_ixfr: true
+
+  # Require valid TSIG signature on incoming NOTIFY messages
+  require_tsig: false
+
+  # TSIG key name for NOTIFY validation (references tsig_keys entry)
+  # If not set, falls back to dns.update_tsig_key when require_tsig is true
+  # tsig_key: notify-key
+
+# =============================================================================
+# Catalog Zone Configuration (for automatic zone discovery)
+# =============================================================================
+catalog:
+  # Enable catalog zone auto-discovery (RFC 9432)
+  enabled: false
+
+  # Catalog zone name
+  zone_name: catalog.example.
+
+  # Polling interval for SOA serial checks (seconds)
+  poll_interval: 300
+
+  # NOTIFY listener bind address (for catalog zone notifications)
+  notify_bind_address: 0.0.0.0
+
+  # NOTIFY listener ports
+  notify_udp_port: 5354
+  notify_tcp_port: 5354
+
+  # Automatically AXFR zones discovered from catalog
+  auto_load_zones: true
+
+  # Remove zones from cache when removed from catalog
+  remove_stale_zones: false
+
+# =============================================================================
+# Logging Configuration
+# =============================================================================
+logging:
+  # Log format: 'json' for structured JSON output, 'text' for human-readable
+  # Use 'text' for local development, 'json' for production
+  format: json
+
+  # Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+  level: INFO
+
+  # Sample rate for successful GET requests (0.0-1.0)
+  # Mutations (POST/PUT/DELETE), errors, and slow requests are always logged
+  sample_rate: 0.1
+
+  # Always log requests slower than this (milliseconds)
+  slow_threshold_ms: 1000
+
+# =============================================================================
+# Application Settings
+# =============================================================================
+
+# Application name (shown in API docs)
+app_name: DNS Zone Manager
+
+# Enable debug mode (enables verbose logging and auto-reload)
+debug: false

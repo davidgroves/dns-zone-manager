@@ -1,0 +1,26 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Backend (Debug)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": [
+        "dns_zone_manager.main:create_app",
+        "--factory",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+        "--reload"
+      ],
+      "env": {
+        "DNS_ZONE_MANAGER_CONFIG_FILE": "${workspaceFolder}/.devcontainer/config.devcontainer.yaml"
+      },
+      "cwd": "${workspaceFolder}/backend/src",
+      "justMyCode": false,
+      "console": "integratedTerminal"
+    }
+  ]
+}

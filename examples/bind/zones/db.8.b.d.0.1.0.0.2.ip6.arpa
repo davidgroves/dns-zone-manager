@@ -1,0 +1,22 @@
+$TTL 3600
+$ORIGIN 8.b.d.0.1.0.0.2.ip6.arpa.
+
+; SOA Record
+@       IN      SOA     ns1.example.com. admin.example.com. (
+                        1                       ; Serial
+                        3600            ; refresh (1 hour)
+                        600             ; retry (10 minutes)
+                        604800          ; expire (1 week)
+                        300             ; minimum TTL (5 minutes)
+                        )
+
+; Name Servers
+@       IN      NS      ns1.example.com.
+@       IN      NS      ns2.example.com.
+
+; PTR Records for 2001:db8::/32 network (documentation prefix)
+
+; 2001:db8::1 -> ipv6-host1.example.com
+1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0   IN      PTR     ipv6-host1.example.com.
+
+

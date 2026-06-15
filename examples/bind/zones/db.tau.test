@@ -1,0 +1,22 @@
+$TTL 3600
+$ORIGIN tau.test.
+
+; SOA Record
+@       IN      SOA     ns1.tau.test. admin.tau.test. (
+                        1                       ; Serial
+                        3600            ; refresh
+                        600             ; retry
+                        604800          ; expire
+                        300             ; minimum TTL
+                        )
+
+; Name Server
+@       IN      NS      ns1.tau.test.
+ns1     IN      A       192.0.2.1
+
+; Basic records
+@       IN      A       192.0.2.119
+www     IN      A       192.0.2.119
+mail    IN      A       192.0.2.219
+@       IN      MX      10 mail.tau.test.
+@       IN      TXT     "Example zone tau.test"

@@ -1,0 +1,142 @@
+# DNS Zone Manager Example Environment
+# This docker-compose file sets up a complete environment with:
+# - BIND 9 DNS server with example zones
+# - FastAPI DNS management API (backend)
+# - Nginx serving the Vite frontend (proxies API calls to FastAPI)
+#
+# Usage:
+#   1. Copy config.example.yaml to config.yaml and customize
+#   2. docker compose up -d
+
+services:
+  # BIND DNS Server
+  # Note: The ISC BIND9 image supports linux/amd64 and linux/arm64 (Apple Silicon).
+  # If you have architecture issues, see README.md troubleshooting section.
+  bind:
+    image: internetsystemsconsortium/bind9:9.20
+    container_name: dns-bind
+    hostname: dns-bind
+    environment:
+      - TZ=UTC
+    volumes:
+      - ./bind/named.conf:/etc/bind/named.conf:ro
+      # Mount zones as read-only source, copy to writable location at startup
+      - ./bind/zones:/etc/bind/zones-source:ro
+      - bind-zones:/var/lib/bind
+    ports:
+      - "15353:53/tcp"
+      - "15353:53/udp"
+      # RNDC control port
+      - "15953:953/tcp"
+    networks:
+      - dns-network
+    # Override entrypoint to copy zone files and wire up NOTIFY at runtime.
+    # The API container's IP is not known ahead of time (random Docker
+    # subnet), so we resolve its service name and enable also-notify via
+    # `rndc reconfig` once it becomes resolvable.
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        set -e
+        cp /etc/bind/zones-source/* /var/lib/bind/
+        chmod 666 /var/lib/bind/*
+
+        # Start with an empty also-notify so named can boot before the API.
+        echo 'also-notify { };' > /var/lib/bind/also-notify.conf
+
+        # Minimal rndc config for in-container control (127.0.0.1:953).
+        cat > /var/lib/bind/rndc-internal.conf <<'EOF'
+        key "rndc-key" {
+            algorithm hmac-sha256;
+            secret "xT7J2kLpN9qRvW4mY8sF1gH5bC3dE6aZ0iO7uP2wX4c=";
+        };
+        options {
+            default-key "rndc-key";
+            default-server 127.0.0.1;
+            default-port 953;
+        };
+        EOF
+
+        chown -R bind:bind /var/lib/bind
+
+        # Background: resolve the API service name, then enable NOTIFY.
+        (
+          api_host=dns-zone-manager
+          i=0
+          while [ "$$i" -lt 60 ]; do
+            set -- $$(getent hosts "$$api_host" 2>/dev/null || true)
+            if [ -n "$$1" ]; then
+              echo "also-notify { $$1 port 5354; };" > /var/lib/bind/also-notify.conf
+              chown bind:bind /var/lib/bind/also-notify.conf
+              rndc -c /var/lib/bind/rndc-internal.conf reconfig 2>/dev/null || true
+              echo "[entrypoint] NOTIFY target set to $$1"
+              break
+            fi
+            i=$$((i + 1))
+            sleep 2
+          done
+        ) &
+
+        exec /usr/sbin/named -g -c /etc/bind/named.conf -u bind
+    healthcheck:
+      # Verify BIND is running and named process exists
+      test: ["CMD-SHELL", "pgrep named > /dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  # FastAPI DNS Management API (backend)
+  dns-zone-manager:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: dns-zone-manager
+    volumes:
+      # Mount config file (copy config.example.yaml to config.yaml and customize)
+      - ./config.yaml:/app/config.yaml:ro
+    ports:
+      - "5354:5354/tcp"
+      - "5354:5354/udp"
+    expose:
+      - "8000"
+    networks:
+      - dns-network
+    depends_on:
+      bind:
+        condition: service_healthy
+    # Use dns-zone-manager CLI with config file
+    command: ["sh", "-c", "sleep 2 && dns-zone-manager --config /app/config.yaml --host 0.0.0.0 --port 8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  # Frontend (nginx serving Vite build, proxies API to FastAPI)
+  frontend:
+    build:
+      context: ..
+      dockerfile: Dockerfile.frontend
+    container_name: dns-frontend
+    ports:
+      - "8000:80"
+    networks:
+      - dns-network
+    depends_on:
+      dns-zone-manager:
+        condition: service_healthy
+    restart: unless-stopped
+
+networks:
+  # No static subnet: Docker assigns an available subnet automatically so the
+  # stack never conflicts with other networks on the host.
+  dns-network:
+    driver: bridge
+
+volumes:
+  bind-zones:

@@ -1,0 +1,22 @@
+$TTL 3600
+$ORIGIN lambda.test.
+
+; SOA Record
+@       IN      SOA     ns1.lambda.test. admin.lambda.test. (
+                        1                       ; Serial
+                        3600            ; refresh
+                        600             ; retry
+                        604800          ; expire
+                        300             ; minimum TTL
+                        )
+
+; Name Server
+@       IN      NS      ns1.lambda.test.
+ns1     IN      A       192.0.2.1
+
+; Basic records
+@       IN      A       192.0.2.111
+www     IN      A       192.0.2.111
+mail    IN      A       192.0.2.211
+@       IN      MX      10 mail.lambda.test.
+@       IN      TXT     "Example zone lambda.test"

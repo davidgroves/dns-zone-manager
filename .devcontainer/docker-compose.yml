@@ -1,0 +1,110 @@
+# DNS Zone Manager Devcontainer Environment
+# Provides a development container and BIND DNS server.
+#
+# No static IPs/subnet are used. BIND's also-notify directive requires an IP
+# address (it does not support hostnames), so the BIND entrypoint resolves the
+# "dev" service name to its current IP at runtime and enables NOTIFY via
+# `rndc reconfig`. The dev container reaches BIND via the "bind" service name.
+#   dev:  receives NOTIFY on port 15354
+#   bind: DNS on 15353, RNDC on 953
+
+services:
+  # Development container - VS Code/Cursor connects here
+  dev:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+    volumes:
+      - ..:/workspace:cached
+      - /var/run/docker.sock:/var/run/docker.sock  # Access to Docker for viewing logs
+    command: sleep infinity
+    environment:
+      - TZ=UTC
+    # Expose ports directly (more reliable than VS Code forwardPorts on macOS)
+    ports:
+      - "5173:5173"   # Vite frontend
+      - "8000:8000"   # FastAPI backend
+    # Enable host.docker.internal on Linux (automatic on Docker Desktop)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # Allow running commands as root when needed
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - seccomp:unconfined
+    networks:
+      - devnet
+
+  # BIND DNS Server
+  bind:
+    image: internetsystemsconsortium/bind9:9.20
+    hostname: bind
+    environment:
+      - TZ=UTC
+    volumes:
+      - ./named.conf.devcontainer:/etc/bind/named.conf:ro
+      - ../examples/bind/zones:/etc/bind/zones-source:ro
+    # Use tmpfs for zone data - automatically cleared on container stop/restart
+    tmpfs:
+      - /var/lib/bind:uid=100,gid=101
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        set -e
+        cp /etc/bind/zones-source/* /var/lib/bind/
+        chmod 666 /var/lib/bind/*
+
+        # Start with an empty also-notify so named can boot before the dev container.
+        echo 'also-notify { };' > /var/lib/bind/also-notify.conf
+
+        # Minimal rndc config for in-container control (127.0.0.1:953).
+        cat > /var/lib/bind/rndc-internal.conf <<'EOF'
+        key "rndc-key" {
+            algorithm hmac-sha256;
+            secret "xT7J2kLpN9qRvW4mY8sF1gH5bC3dE6aZ0iO7uP2wX4c=";
+        };
+        options {
+            default-key "rndc-key";
+            default-server 127.0.0.1;
+            default-port 953;
+        };
+        EOF
+
+        chown -R bind:bind /var/lib/bind
+
+        # Background: resolve the dev service name, then enable NOTIFY to it.
+        (
+          target_host=dev
+          i=0
+          while [ "$$i" -lt 60 ]; do
+            set -- $$(getent hosts "$$target_host" 2>/dev/null || true)
+            if [ -n "$$1" ]; then
+              echo "also-notify { $$1 port 15354; };" > /var/lib/bind/also-notify.conf
+              chown bind:bind /var/lib/bind/also-notify.conf
+              rndc -c /var/lib/bind/rndc-internal.conf reconfig 2>/dev/null || true
+              echo "[entrypoint] NOTIFY target set to $$1"
+              break
+            fi
+            i=$$((i + 1))
+            sleep 2
+          done
+        ) &
+
+        exec /usr/sbin/named -g -c /etc/bind/named.conf -u bind
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep named > /dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+    networks:
+      - devnet
+
+networks:
+  # No static subnet: Docker assigns an available subnet automatically so the
+  # devcontainer network never conflicts with other networks on the host.
+  devnet:
+    driver: bridge
+

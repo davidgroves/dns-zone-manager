@@ -1,0 +1,22 @@
+$TTL 3600
+$ORIGIN omicron.test.
+
+; SOA Record
+@       IN      SOA     ns1.omicron.test. admin.omicron.test. (
+                        1                       ; Serial
+                        3600            ; refresh
+                        600             ; retry
+                        604800          ; expire
+                        300             ; minimum TTL
+                        )
+
+; Name Server
+@       IN      NS      ns1.omicron.test.
+ns1     IN      A       192.0.2.1
+
+; Basic records
+@       IN      A       192.0.2.115
+www     IN      A       192.0.2.115
+mail    IN      A       192.0.2.215
+@       IN      MX      10 mail.omicron.test.
+@       IN      TXT     "Example zone omicron.test"

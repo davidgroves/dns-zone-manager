@@ -1,0 +1,22 @@
+$TTL 3600
+$ORIGIN omega.test.
+
+; SOA Record
+@       IN      SOA     ns1.omega.test. admin.omega.test. (
+                        1                       ; Serial
+                        3600            ; refresh
+                        600             ; retry
+                        604800          ; expire
+                        300             ; minimum TTL
+                        )
+
+; Name Server
+@       IN      NS      ns1.omega.test.
+ns1     IN      A       192.0.2.1
+
+; Basic records
+@       IN      A       192.0.2.124
+www     IN      A       192.0.2.124
+mail    IN      A       192.0.2.224
+@       IN      MX      10 mail.omega.test.
+@       IN      TXT     "Example zone omega.test"

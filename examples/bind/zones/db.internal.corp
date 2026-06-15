@@ -1,0 +1,82 @@
+$TTL 3600
+$ORIGIN internal.corp.
+
+; SOA Record
+@       IN      SOA     ns1.internal.corp. admin.internal.corp. (
+                        1                       ; Serial
+                        3600            ; refresh (1 hour)
+                        600             ; retry (10 minutes)
+                        604800          ; expire (1 week)
+                        300             ; minimum TTL (5 minutes)
+                        )
+
+; Name Servers
+@       IN      NS      ns1.internal.corp.
+
+; Name Server A Record
+ns1     IN      A       10.0.0.1
+
+; Internal Gateway
+gateway IN      A       10.0.0.1
+
+; Domain Controllers
+dc1     IN      A       10.0.1.10
+dc2     IN      A       10.0.1.11
+
+; Active Directory SRV Records
+_ldap._tcp.dc._msdcs    IN      SRV     0 100 389 dc1.internal.corp.
+_ldap._tcp.dc._msdcs    IN      SRV     0 100 389 dc2.internal.corp.
+_kerberos._tcp.dc._msdcs IN     SRV     0 100 88 dc1.internal.corp.
+_kerberos._tcp.dc._msdcs IN     SRV     0 100 88 dc2.internal.corp.
+
+; File Servers
+fileserver      IN      A       10.0.2.10
+nas             IN      A       10.0.2.11
+backup          IN      A       10.0.2.20
+
+; Print Servers
+printserver     IN      A       10.0.3.10
+printer1        IN      CNAME   printserver.internal.corp.
+printer2        IN      CNAME   printserver.internal.corp.
+
+; Application Servers
+erp             IN      A       10.0.4.10
+crm             IN      A       10.0.4.20
+hr-portal       IN      A       10.0.4.30
+intranet        IN      A       10.0.4.40
+
+; Development Environment
+dev-api         IN      A       10.0.5.10
+dev-web         IN      A       10.0.5.20
+dev-db          IN      A       10.0.5.30
+
+; Staging Environment
+staging-api     IN      A       10.0.6.10
+staging-web     IN      A       10.0.6.20
+staging-db      IN      A       10.0.6.30
+
+; Monitoring & Infrastructure
+prometheus      IN      A       10.0.7.10
+grafana         IN      A       10.0.7.11
+alertmanager    IN      A       10.0.7.12
+logging         IN      A       10.0.7.20
+elk             IN      CNAME   logging.internal.corp.
+
+; CI/CD
+jenkins         IN      A       10.0.8.10
+gitlab          IN      A       10.0.8.20
+registry        IN      A       10.0.8.30
+artifactory     IN      A       10.0.8.40
+
+; VPN Endpoints
+vpn             IN      A       10.0.0.5
+vpn-backup      IN      A       10.0.0.6
+
+; WiFi Controllers
+wifi-controller IN      A       10.0.9.10
+
+; VOIP/Phone System
+pbx             IN      A       10.0.10.10
+_sip._tcp       IN      SRV     10 50 5060 pbx.internal.corp.
+_sip._udp       IN      SRV     10 50 5060 pbx.internal.corp.
+

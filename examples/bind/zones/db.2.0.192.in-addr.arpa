@@ -1,0 +1,42 @@
+$TTL 3600
+$ORIGIN 2.0.192.in-addr.arpa.
+
+; SOA Record
+@       IN      SOA     ns1.example.com. admin.example.com. (
+                        1                       ; Serial
+                        3600            ; refresh (1 hour)
+                        600             ; retry (10 minutes)
+                        604800          ; expire (1 week)
+                        300             ; minimum TTL (5 minutes)
+                        )
+
+; Name Servers
+@       IN      NS      ns1.example.com.
+@       IN      NS      ns2.example.com.
+
+; PTR Records for 192.0.2.x network (corresponding to example.com forward records)
+1       IN      PTR     ns1.example.com.
+2       IN      PTR     ns2.example.com.
+
+; Mail servers
+10      IN      PTR     mail1.example.com.
+11      IN      PTR     mail2.example.com.
+
+; Database servers
+30      IN      PTR     db.example.com.
+31      IN      PTR     db-read.example.com.
+32      IN      PTR     db-read.example.com.
+
+; Cache server
+40      IN      PTR     cache.example.com.
+
+; API server
+50      IN      PTR     api.example.com.
+
+; LDAP server
+60      IN      PTR     ldap.example.com.
+
+; Web server
+100     IN      PTR     www.example.com.
+
+

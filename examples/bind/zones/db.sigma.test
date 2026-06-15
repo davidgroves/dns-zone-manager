@@ -1,0 +1,22 @@
+$TTL 3600
+$ORIGIN sigma.test.
+
+; SOA Record
+@       IN      SOA     ns1.sigma.test. admin.sigma.test. (
+                        1                       ; Serial
+                        3600            ; refresh
+                        600             ; retry
+                        604800          ; expire
+                        300             ; minimum TTL
+                        )
+
+; Name Server
+@       IN      NS      ns1.sigma.test.
+ns1     IN      A       192.0.2.1
+
+; Basic records
+@       IN      A       192.0.2.118
+www     IN      A       192.0.2.118
+mail    IN      A       192.0.2.218
+@       IN      MX      10 mail.sigma.test.
+@       IN      TXT     "Example zone sigma.test"

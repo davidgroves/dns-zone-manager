@@ -19,8 +19,9 @@ RUN npm install
 COPY tsconfig.json vite.config.ts ./
 COPY frontend/ ./frontend/
 
-# Build the SPA (bypasses version:sync; no git history available in the image)
-RUN npm pkg set version="$VERSION" && npx tsc && npx vite build
+# Build the SPA (bypasses version:sync; no git history available in the image).
+# Strip a leading "v" so a git tag like v0.2.0 yields a valid npm version.
+RUN VER="${VERSION#v}" && npm pkg set version="$VER" && npx tsc && npx vite build
 
 # Runtime stage with nginx
 FROM nginx:alpine

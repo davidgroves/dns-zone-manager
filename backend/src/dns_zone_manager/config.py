@@ -99,6 +99,33 @@ class AzureADSettings(BaseSettings):
     )
 
 
+class ProxyAuthSettings(BaseSettings):
+    """Trusted reverse-proxy (forward-auth) header authentication.
+
+    When enabled, the app trusts an identity header set by a front proxy
+    (e.g. Traefik + oauth2-proxy) and uses it as the authenticated user for
+    audit logging. This is ONLY safe when the backend is reachable solely via
+    that proxy, since the proxy must overwrite the header on every request so
+    clients cannot spoof it.
+    """
+
+    model_config = SettingsConfigDict(env_prefix="PROXY_AUTH_")
+
+    enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("enabled", "PROXY_AUTH_ENABLED"),
+        description="Trust an identity header set by a front proxy",
+    )
+    user_header: str = Field(
+        default="X-Auth-Request-Email",
+        description="Request header carrying the authenticated user identity (email)",
+    )
+    name_header: str = Field(
+        default="X-Auth-Request-Preferred-Username",
+        description="Request header carrying the user's display name (optional)",
+    )
+
+
 class APIKeyEntry(BaseModel):
     """A single API key entry with name and secret."""
 
@@ -329,6 +356,7 @@ class Settings(BaseSettings):
     # Authentication settings
     azure_ad: AzureADSettings = Field(default_factory=AzureADSettings)
     api_key: APIKeySettings = Field(default_factory=APIKeySettings)
+    proxy_auth: ProxyAuthSettings = Field(default_factory=ProxyAuthSettings)
 
     # Cache settings
     cache: CacheSettings = Field(default_factory=CacheSettings)
@@ -446,6 +474,7 @@ class Settings(BaseSettings):
             dns=from_yaml(DNSSettings, yaml_config.get("dns")),
             azure_ad=from_yaml(AzureADSettings, yaml_config.get("azure_ad")),
             api_key=from_yaml(APIKeySettings, api_key_yaml if api_key_yaml else None),
+            proxy_auth=from_yaml(ProxyAuthSettings, yaml_config.get("proxy_auth")),
             cache=from_yaml(CacheSettings, yaml_config.get("cache")),
             catalog=from_yaml(CatalogZoneSettings, yaml_config.get("catalog")),
             notify=from_yaml(NotifySettings, yaml_config.get("notify")),

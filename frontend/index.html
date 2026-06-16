@@ -252,6 +252,8 @@
                             <span>Atomic</span>
                         </button>
                         
+                        <span x-show="currentUser" class="text-muted" x-text="currentUser" :title="'Signed in as ' + currentUser"></span>
+
                         <button @click="logout()" class="btn btn-ghost btn-logout" title="Logout">
                             Logout
                         </button>

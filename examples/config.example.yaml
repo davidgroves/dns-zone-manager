@@ -96,6 +96,23 @@ azure_ad:
     - api://dns-zone-manager/.default
 
 # =============================================================================
+# Trusted Reverse-Proxy (forward-auth) Authentication (optional)
+# =============================================================================
+# When enabled, the app trusts an identity header injected by a front proxy
+# (e.g. Traefik + oauth2-proxy) and uses it as the authenticated user. The web
+# UI also skips its own login screen. ONLY enable this when the backend is
+# reachable solely via that proxy, since the proxy must overwrite these headers
+# on every request so clients cannot spoof an identity.
+proxy_auth:
+  enabled: false
+
+  # Request header carrying the authenticated user identity (email).
+  user_header: X-Auth-Request-Email
+
+  # Request header carrying the user's display name (optional).
+  name_header: X-Auth-Request-Preferred-Username
+
+# =============================================================================
 # Zone Cache Configuration
 # =============================================================================
 cache:

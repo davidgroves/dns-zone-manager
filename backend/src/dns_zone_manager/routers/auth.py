@@ -15,7 +15,7 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 class LoginEvent(BaseModel):
     """Login event for metrics tracking."""
 
-    auth_type: Literal["api_key", "azure_ad"]
+    auth_type: Literal["api_key", "azure_ad", "proxy"]
 
 
 class MetricsResponse(BaseModel):

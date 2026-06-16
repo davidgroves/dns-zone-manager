@@ -692,17 +692,28 @@ At least one authentication method must be configured and used.
         summary="UI Configuration",
         description="Get configuration for the web UI.",
     )
-    async def ui_config() -> dict:
+    async def ui_config(request: Request) -> dict:
         """UI configuration endpoint.
 
         Returns configuration needed by the frontend, including
-        authentication options and version information.
+        authentication options, the proxy-authenticated identity (if any),
+        and version information.
 
         Returns:
             UI configuration
         """
+        from dns_zone_manager.auth.proxy import proxy_user_from_request
+
+        proxy_user = proxy_user_from_request(request)
         return {
             "azureEnabled": settings.azure_ad.enabled,
+            "apiKeyEnabled": settings.api_key.enabled,
+            "proxyAuthEnabled": settings.proxy_auth.enabled,
+            "user": (
+                {"email": proxy_user.email, "name": proxy_user.name}
+                if proxy_user
+                else None
+            ),
             "version": __version__,
         }
 

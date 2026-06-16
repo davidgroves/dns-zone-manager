@@ -126,6 +126,11 @@ export function createAuthMethods(_state: AppState) {
       this.intendedRoute = null;
       // Clear URL params on logout
       syncUrlFromState(this);
+      // In proxy-auth mode the session is owned by the front proxy
+      // (e.g. oauth2-proxy); redirect there to actually end the session.
+      if (this.proxyAuthEnabled) {
+        window.location.href = '/oauth2/sign_out';
+      }
     },
   };
 }

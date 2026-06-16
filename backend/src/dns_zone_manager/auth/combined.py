@@ -10,6 +10,7 @@ from fastapi import Depends, HTTPException, Request, Security, status
 
 from dns_zone_manager.auth.api_key import APIKeyUser, api_key_header, validate_api_key
 from dns_zone_manager.auth.azure import AzureUser, azure_scheme, get_azure_scheme
+from dns_zone_manager.auth.proxy import ProxyUser, proxy_user_from_request
 from dns_zone_manager.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -68,10 +69,21 @@ class AuthenticatedUser:
     """Represents an authenticated user from any auth method."""
 
     user_id: str
-    auth_type: str  # "azure_ad" or "api_key"
+    auth_type: str  # "azure_ad", "api_key", "proxy", or "none"
     name: str | None = None
     email: str | None = None
     roles: list[str] | None = None
+
+    @classmethod
+    def from_proxy(cls, user: "ProxyUser") -> "AuthenticatedUser":
+        """Create from a trusted reverse-proxy (forward-auth) user."""
+        return cls(
+            user_id=user.user_id,
+            auth_type="proxy",
+            name=user.name,
+            email=user.email,
+            roles=["proxy_user"],
+        )
 
     @classmethod
     def from_azure(cls, user: AzureUser) -> "AuthenticatedUser":
@@ -97,14 +109,17 @@ class AuthenticatedUser:
 
 
 async def get_current_user(
+    request: Request,
     api_key: Annotated[str | None, Security(api_key_header)] = None,
     bearer_token: Annotated[str | None, Depends(azure_scheme)] = None,
 ) -> AuthenticatedUser:
-    """Get the current authenticated user from either auth method.
+    """Get the current authenticated user from any enabled auth method.
 
-    Tries API key first, then Azure AD. At least one must succeed.
+    Tries trusted proxy header, then API key, then Azure AD. At least one
+    must succeed (unless no auth method is enabled, which allows anonymous).
 
     Args:
+        request: The incoming request (used for proxy header auth)
         api_key: API key from header
         bearer_token: Bearer token for Azure AD
 
@@ -117,7 +132,11 @@ async def get_current_user(
     settings = get_settings()
 
     # Check if any auth method is enabled
-    if not settings.api_key.enabled and not settings.azure_ad.enabled:
+    if (
+        not settings.api_key.enabled
+        and not settings.azure_ad.enabled
+        and not settings.proxy_auth.enabled
+    ):
         # No auth configured - allow anonymous access
         return AuthenticatedUser(
             user_id="anonymous",
@@ -125,7 +144,13 @@ async def get_current_user(
             name="Anonymous",
         )
 
-    # Try API key authentication first
+    # Try trusted reverse-proxy header authentication first
+    if settings.proxy_auth.enabled:
+        proxy_user = proxy_user_from_request(request)
+        if proxy_user is not None:
+            return AuthenticatedUser.from_proxy(proxy_user)
+
+    # Try API key authentication
     if api_key is not None and settings.api_key.enabled:
         try:
             api_key_user = validate_api_key(api_key)
@@ -170,6 +195,8 @@ async def get_current_user(
 
     # No valid authentication provided
     auth_methods = []
+    if settings.proxy_auth.enabled:
+        auth_methods.append(f"Trusted proxy header ({settings.proxy_auth.user_header})")
     if settings.api_key.enabled:
         auth_methods.append("API Key (X-API-Key header)")
     if settings.azure_ad.enabled:
@@ -183,6 +210,7 @@ async def get_current_user(
 
 
 async def get_optional_user(
+    request: Request,
     api_key: Annotated[str | None, Security(api_key_header)] = None,
     bearer_token: Annotated[str | None, Depends(azure_scheme)] = None,
 ) -> AuthenticatedUser | None:
@@ -191,6 +219,7 @@ async def get_optional_user(
     Unlike get_current_user, this doesn't raise an error if no auth is provided.
 
     Args:
+        request: The incoming request (used for proxy header auth)
         api_key: API key from header
         bearer_token: Bearer token for Azure AD
 
@@ -198,6 +227,12 @@ async def get_optional_user(
         AuthenticatedUser if authenticated, None otherwise
     """
     settings = get_settings()
+
+    # Try trusted reverse-proxy header authentication first
+    if settings.proxy_auth.enabled:
+        proxy_user = proxy_user_from_request(request)
+        if proxy_user is not None:
+            return AuthenticatedUser.from_proxy(proxy_user)
 
     # Try API key authentication
     if api_key is not None and settings.api_key.enabled:

@@ -381,11 +381,28 @@ export function createApp(config: AppConfig) {
         if (response.ok) {
           const uiConfig = await response.json();
           self.azureEnabled = uiConfig.azureEnabled ?? false;
+          self.proxyAuthEnabled = uiConfig.proxyAuthEnabled ?? false;
+          self.currentUser = uiConfig.user?.email ?? null;
           self.appVersion = uiConfig.version ?? '';
         }
       } catch {
         // Config fetch failed, keep defaults
         console.warn('Failed to fetch UI config, using defaults');
+      }
+
+      // Trusted reverse-proxy auth: a front proxy (e.g. Traefik + oauth2-proxy)
+      // already authenticated the user and injects the identity header on every
+      // request. Skip the login screen entirely.
+      if (self.proxyAuthEnabled) {
+        self.authenticated = true;
+        self.trackLogin('proxy');
+        if (self.intendedRoute) {
+          await self.navigateToRoute(self.intendedRoute);
+        } else {
+          await self.loadZones();
+          self.updateUrlFromState();
+        }
+        return;
       }
 
       // Check for Azure callback - azure_token param means we're returning from Azure login

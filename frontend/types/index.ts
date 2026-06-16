@@ -212,6 +212,8 @@ export interface AppState {
   apiKeyInput: string;
   loginError: string;
   azureEnabled: boolean;
+  proxyAuthEnabled: boolean;
+  currentUser: string | null;
   appVersion: string;
 
   // UI state
@@ -326,6 +328,7 @@ export interface AppState {
 // Config passed at init or fetched from /ui/config API
 export interface AppConfig {
   azureEnabled?: boolean;
+  proxyAuthEnabled?: boolean;
   version?: string;
 }
 

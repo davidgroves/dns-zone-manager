@@ -25,7 +25,7 @@ RUN uv sync --frozen --no-dev --extra api
 
 
 # Runtime stage
-FROM python:3.13-slim AS runtime
+FROM python:3.14-slim AS runtime
 
 # Create non-root user
 RUN useradd --create-home --shell /bin/bash appuser

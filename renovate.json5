@@ -1,0 +1,33 @@
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+
+  automerge: false,
+
+  extends: [
+    "config:recommended",
+    ":dependencyDashboard",
+    "group:allNonMajor",
+  ],
+
+  lockFileMaintenance: {
+    enabled: true,
+    schedule: ["before 6am on monday"],
+  },
+
+  packageRules: [
+    {
+      matchUpdateTypes: ["major"],
+      groupName: null,
+    },
+    {
+      matchPackageNames: ["catalog-zone-indexer"],
+      registryUrls: [
+        "https://codeberg.org/api/packages/davidgroves/pypi/simple/",
+      ],
+    },
+    {
+      matchManagers: ["pre-commit"],
+      groupName: "pre-commit hooks",
+    },
+  ],
+}

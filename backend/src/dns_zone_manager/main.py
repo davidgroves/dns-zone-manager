@@ -709,11 +709,7 @@ At least one authentication method must be configured and used.
             "azureEnabled": settings.azure_ad.enabled,
             "apiKeyEnabled": settings.api_key.enabled,
             "proxyAuthEnabled": settings.proxy_auth.enabled,
-            "user": (
-                {"email": proxy_user.email, "name": proxy_user.name}
-                if proxy_user
-                else None
-            ),
+            "user": ({"email": proxy_user.email, "name": proxy_user.name} if proxy_user else None),
             "version": __version__,
         }
 

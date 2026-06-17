@@ -1,6 +1,7 @@
 # CI: https://ci.codeberg.org/davidgroves/dns-zone-manager
-# Requires Woodpecker secret: woodpecker_dns_zone_manager
-#   (Codeberg access token with package read/write)
+# Requires Woodpecker secrets:
+#   woodpecker_dns_zone_manager — Codeberg access token (package read/write)
+#   renovate_token              — Renovate bot PAT (see DEVELOPMENT.md)
 #
 # On a v* tag push this publishes:
 #   - PyPI package   -> https://codeberg.org/api/packages/davidgroves/pypi
@@ -20,6 +21,15 @@ steps:
       - apt-get update && apt-get install -y --no-install-recommends git
       - git config --global --add safe.directory "$CI_WORKSPACE"
       - uv run --extra dev pytest -m "not integration"
+    when:
+      event: [push, pull_request, tag]
+
+  test-frontend:
+    image: node:22-slim
+    commands:
+      - npm ci
+      - npm run typecheck
+      - npm run test
     when:
       event: [push, pull_request, tag]
 

@@ -221,7 +221,6 @@ __marimo__/
 
 # Node.js
 node_modules/
-package-lock.json
 
 # Vite build output (compiled from TypeScript)
 dist/

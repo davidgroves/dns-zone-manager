@@ -116,6 +116,32 @@ npm run test:e2e:headed   # Run with visible browser
 npm run test:e2e:report   # View test report at http://localhost:9324
 ```
 
+## Dependency Updates (Renovate)
+
+Renovate opens daily dependency update PRs for Python (`uv`) and npm packages. Configuration lives in `renovate.json5`. PRs require manual review and merge (`automerge: false`).
+
+### One-time setup (Codeberg + Woodpecker)
+
+1. **Create a Renovate bot account** on Codeberg (e.g. `renovate-bot`) with full name and email configured.
+2. **Grant write access** to the bot on `davidgroves/dns-zone-manager`.
+3. **Create a Personal Access Token** for the bot with scopes: `repo` (read+write), `issue` (read+write), `organization` (read).
+4. **Add a Woodpecker secret** named `renovate_token` with the bot PAT (repo settings → Secrets).
+5. **Create a Woodpecker cron job** named `renovate` on branch `main`, schedule `@daily`:
+   ```bash
+   woodpecker cron add \
+     --repository davidgroves/dns-zone-manager \
+     --name renovate \
+     --branch main \
+     --schedule "@daily"
+   ```
+6. **Verify**: manually trigger the `renovate` cron once. Confirm Renovate opens a Dependency Dashboard issue and/or update PRs, and that Woodpecker runs `test-backend` and `test-frontend` on those PRs.
+
+The Renovate pipeline is defined in `.woodpecker/.renovate.yaml` and runs only on the cron event (not on every push).
+
+### Optional: branch protection
+
+In Codeberg repo settings, require pull requests and passing status checks before merging to `main`.
+
 ## Code Quality
 
 ### Pre-commit Hooks

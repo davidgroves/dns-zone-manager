@@ -23,7 +23,7 @@
     "test:e2e:check": "curl -sf http://localhost:8000/health > /dev/null || (echo 'ERROR: FastAPI backend not running. Start servers with VS Code task: Start All (Devcontainer)' && exit 1); test $(curl -sf -H 'X-API-Key: demo-api-key-12345' 'http://localhost:8000/v1/zones' | grep -c '\"zone\":') -gt 0 || (echo 'ERROR: No zones loaded. Is BIND running?' && exit 1)"
   },
   "devDependencies": {
-    "@biomejs/biome": "^1.9.4",
+    "@biomejs/biome": "^2.0.0",
     "@playwright/test": "^1.58.0",
     "@types/alpinejs": "^3.13.10",
     "@vitest/coverage-v8": "^4.0.18",

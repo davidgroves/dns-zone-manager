@@ -136,7 +136,7 @@ Renovate opens daily dependency update PRs for Python (`uv`) and npm packages. C
    ```
 6. **Verify**: manually trigger the `renovate` cron once. Confirm Renovate opens a Dependency Dashboard issue and/or update PRs, and that Woodpecker runs `test-backend` and `test-frontend` on those PRs.
 
-The Renovate pipeline is defined in `.woodpecker/.renovate.yaml` and runs only on the cron event (not on every push).
+The Renovate step is in `.woodpecker.yaml` (cron event only; other steps are skipped on cron).
 
 ### Optional: branch protection
 

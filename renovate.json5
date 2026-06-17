@@ -29,5 +29,16 @@
       matchManagers: ["pre-commit"],
       groupName: "pre-commit hooks",
     },
+    {
+      // ISC BIND uses even minors for stable (9.18, 9.20) and odd minors for
+      // the development/unstable branch (9.19, 9.21). Renovate sees 9.21 > 9.20
+      // numerically and would otherwise bump us onto the unstable branch, whose
+      // config parsing differs between releases and breaks the devcontainer.
+      // Keep us on the 9.20 stable branch until the next stable (9.22) is
+      // adopted intentionally.
+      matchDatasources: ["docker"],
+      matchPackageNames: ["internetsystemsconsortium/bind9"],
+      allowedVersions: "<9.21",
+    },
   ],
 }

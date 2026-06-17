@@ -36,8 +36,12 @@ services:
       - devnet
 
   # BIND DNS Server
+  # Pin to the 9.20 STABLE branch (even minor = stable, odd minor = development).
+  # 9.21 is the ISC development/unstable branch and its config parsing differs
+  # between patch releases (e.g. max-ixfr-ratio), which breaks this config.
+  # Keep this aligned with the CI image in tests/integration/bind_container.py.
   bind:
-    image: internetsystemsconsortium/bind9:9.21
+    image: internetsystemsconsortium/bind9:9.20
     hostname: bind
     environment:
       - TZ=UTC

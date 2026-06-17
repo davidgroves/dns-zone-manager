@@ -2,6 +2,7 @@
 # Requires Woodpecker secrets:
 #   woodpecker_dns_zone_manager — Codeberg access token (package read/write)
 #   renovate_token              — Renovate bot PAT (see DEVELOPMENT.md)
+#   github_com_token            — read-only github.com PAT (no scopes) for changelogs
 #
 # On a v* tag push this publishes:
 #   - PyPI package   -> https://codeberg.org/api/packages/davidgroves/pypi
@@ -93,6 +94,10 @@ steps:
       RENOVATE_TOKEN:
         from_secret: renovate_token
       RENOVATE_REPOSITORIES: davidgroves/dns-zone-manager
+      # Read-only github.com PAT (no scopes) used only to fetch changelogs /
+      # release notes for dependencies and avoid github.com rate limiting.
+      GITHUB_COM_TOKEN:
+        from_secret: github_com_token
       LOG_LEVEL: info
     commands:
       - renovate

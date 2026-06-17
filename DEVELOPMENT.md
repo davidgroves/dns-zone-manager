@@ -124,7 +124,7 @@ Renovate opens daily dependency update PRs for Python (`uv`) and npm packages. C
 
 1. **Create a Renovate bot account** on Codeberg (e.g. `renovate-bot`) with full name and email configured.
 2. **Grant write access** to the bot on `davidgroves/dns-zone-manager`.
-3. **Create a Personal Access Token** for the bot with scopes: `repo` (read+write), `issue` (read+write), `organization` (read).
+3. **Create a Personal Access Token** for the bot with scopes: `repo` (read+write), `issue` (read+write), `organization` (read), `user` (read). The `user: read` scope is required — Renovate calls `GET /api/v1/user` on startup to identify the bot account, and the run fails with `Initialization error: Authentication failure` without it.
 4. **Add a Woodpecker secret** named `renovate_token` with the bot PAT (repo settings → Secrets).
 5. **Create a Woodpecker cron job** named `renovate` on branch `main`, schedule `@daily`:
    ```bash
@@ -134,7 +134,8 @@ Renovate opens daily dependency update PRs for Python (`uv`) and npm packages. C
      --branch main \
      --schedule "@daily"
    ```
-6. **Verify**: manually trigger the `renovate` cron once. Confirm Renovate opens a Dependency Dashboard issue and/or update PRs, and that Woodpecker runs `test-backend` and `test-frontend` on those PRs.
+6. **(Optional) Add a `github_com_token` secret** — a read-only github.com PAT (classic, *no scopes*) used only to fetch changelogs/release notes for dependencies and avoid github.com API rate limiting. Without it Renovate still works but logs `Rate limit exceeded for api.github.com`. Enable the secret for at least the `cron` event.
+7. **Verify**: manually trigger the `renovate` cron once. Confirm Renovate opens a Dependency Dashboard issue and/or update PRs, and that Woodpecker runs `test-backend` and `test-frontend` on those PRs.
 
 The Renovate step is in `.woodpecker.yaml` (cron event only; other steps are skipped on cron).
 

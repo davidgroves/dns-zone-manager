@@ -37,7 +37,7 @@ services:
 
   # BIND DNS Server
   bind:
-    image: internetsystemsconsortium/bind9:9.20
+    image: internetsystemsconsortium/bind9:9.21
     hostname: bind
     environment:
       - TZ=UTC

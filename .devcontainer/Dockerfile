@@ -1,5 +1,5 @@
 # DNS Zone Manager Development Container
-FROM mcr.microsoft.com/devcontainers/python:1-3.13-bookworm
+FROM mcr.microsoft.com/devcontainers/python:3-3.13-bookworm
 
 # Remove expired yarn repo before apt-get update
 RUN rm -f /etc/apt/sources.list.d/yarn.list || true

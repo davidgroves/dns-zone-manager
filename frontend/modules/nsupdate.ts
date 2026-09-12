@@ -1,33 +1,30 @@
 import { API_BASE } from '../api/client';
-import type { AppState } from '../types';
+import type { AppState, NsupdateDraftsResult } from '../types';
 
 // Method context type - includes state and other methods
 type NsupdateMethodContext = AppState & {
   toast: (message: string, type?: 'success' | 'error' | 'warning') => void;
-  loadRecords: (
-    cursor?: string | null,
-    resetHistory?: boolean,
-  ) => Promise<void>;
-  loadZones: (cursor?: string | null, resetHistory?: boolean) => Promise<void>;
+  openScheduledView: () => void;
+  loadScheduledChanges: () => Promise<void>;
 };
 
 /**
- * NSUPDATE module for raw DNS update commands.
+ * NSUPDATE module — paste nsupdate text to create draft scheduled changes.
  * NOTE: Methods use `this` (the Alpine proxy) for state changes to trigger reactivity.
  */
 export function createNsupdateMethods(_state: AppState) {
   return {
     /**
-     * Execute NSUPDATE commands.
+     * Parse nsupdate text and save each send transaction as a draft scheduled change.
      */
-    async executeNsupdate(this: NsupdateMethodContext) {
+    async saveNsupdateAsDrafts(this: NsupdateMethodContext) {
       if (!this.nsupdateText.trim()) return;
 
       this.saving = true;
       this.nsupdateResult = null;
 
       try {
-        const response = await fetch(`${API_BASE}/nsupdate`, {
+        const response = await fetch(`${API_BASE}/nsupdate/drafts`, {
           method: 'POST',
           headers: {
             'Content-Type': 'text/plain',
@@ -39,30 +36,34 @@ export function createNsupdateMethods(_state: AppState) {
         const data = await response.json();
 
         if (response.ok) {
-          this.nsupdateResult = data;
-          if (data.total_failed === 0) {
-            this.toast(
-              `NSUPDATE: ${data.total_success} transaction(s) succeeded`,
-              'success',
-            );
-          } else {
-            this.toast(
-              `NSUPDATE: ${data.total_success} succeeded, ${data.total_failed} failed`,
-              'warning',
-            );
-          }
-          await this.loadZones();
-          if (this.selectedZone) {
-            await this.loadRecords();
-          }
-        } else {
+          const result = data as NsupdateDraftsResult;
+          this.nsupdateResult = result;
+          const n = result.total;
           this.toast(
-            `NSUPDATE failed: ${data.detail || 'Unknown error'}`,
-            'error',
+            n === 1
+              ? 'Created 1 draft scheduled change'
+              : `Created ${n} draft scheduled changes`,
+            'success',
           );
+          this.nsupdateText = '';
+          this.showNsupdate = false;
+          this.nsupdateResult = null;
+          this.openScheduledView();
+          await this.loadScheduledChanges();
+        } else {
+          const detail =
+            typeof data.detail === 'string'
+              ? data.detail
+              : Array.isArray(data.detail)
+                ? data.detail.map((d: { msg?: string }) => d.msg).join('; ')
+                : 'Unknown error';
+          this.toast(`NSUPDATE drafts failed: ${detail}`, 'error');
         }
       } catch (e) {
-        this.toast(`NSUPDATE failed: ${(e as Error).message}`, 'error');
+        this.toast(
+          `NSUPDATE drafts failed: ${(e as Error).message}`,
+          'error',
+        );
       }
 
       this.saving = false;

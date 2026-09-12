@@ -11,6 +11,7 @@ export const URL_PARAMS = {
   field: 'field',
   allZones: 'all',
   view: 'view',
+  change: 'change',
 } as const;
 
 /**
@@ -27,6 +28,7 @@ export function parseSearchString(searchString: string): RouteParams {
   const field = params.get(URL_PARAMS.field) as SearchField | null;
   const allZones = params.get(URL_PARAMS.allZones) === 'true';
   const view = params.get(URL_PARAMS.view);
+  const change = params.get(URL_PARAMS.change);
 
   const page = pageStr ? Number.parseInt(pageStr, 10) : 1;
 
@@ -38,6 +40,7 @@ export function parseSearchString(searchString: string): RouteParams {
     searchField: field || 'either',
     searchAllZones: allZones,
     view: view || null,
+    change: change || null,
   };
 }
 
@@ -82,6 +85,10 @@ export function buildQueryString(params: Partial<RouteParams>): string {
 
   if (params.view) {
     urlParams.set(URL_PARAMS.view, params.view);
+  }
+
+  if (params.change) {
+    urlParams.set(URL_PARAMS.change, params.change);
   }
 
   const queryString = urlParams.toString();
@@ -133,6 +140,10 @@ export function getRouteParamsFromState(state: AppState): RouteParams {
       : state.showScheduledView
         ? 'scheduled'
         : null,
+    change:
+      state.showScheduledView && state.selectedScheduledChange?.id
+        ? state.selectedScheduledChange.id
+        : null,
   };
 }
 
@@ -159,6 +170,7 @@ type RouterMethodContext = AppState & {
   toast: (message: string, type?: 'success' | 'error' | 'warning') => void;
   openScheduledView: () => void;
   openAuditView: () => void;
+  openScheduledChangeById: (id: string) => Promise<void>;
 };
 
 /**
@@ -171,9 +183,14 @@ export function createRouterMethods(_state: AppState) {
      * Called after authentication to restore the intended destination.
      */
     async navigateToRoute(this: RouterMethodContext, route: RouteParams) {
-      if (route.view === 'scheduled') {
+      // change= alone implies the scheduled view.
+      if (route.view === 'scheduled' || route.change) {
         await this.loadZones();
-        this.openScheduledView();
+        if (route.change) {
+          await this.openScheduledChangeById(route.change);
+        } else {
+          this.openScheduledView();
+        }
         this.intendedRoute = null;
         syncUrlFromState(this);
         return;

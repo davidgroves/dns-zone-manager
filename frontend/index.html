@@ -289,12 +289,12 @@
                                 <div class="header-actions">
                                     <div class="status-filter" @click.outside="showScheduledStatusMenu = false">
                                         <button type="button"
-                                                class="status-filter-toggle"
+                                                class="btn btn-ghost btn-sm status-filter-toggle"
                                                 @click="showScheduledStatusMenu = !showScheduledStatusMenu"
                                                 :aria-expanded="showScheduledStatusMenu"
                                                 aria-haspopup="listbox">
                                             <span class="status-filter-label" x-text="scheduledStatusFilterLabel()"></span>
-                                            <svg class="status-filter-chevron" viewBox="0 0 24 24" fill="none"
+                                            <svg class="status-filter-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none"
                                                  stroke="currentColor" stroke-width="2" aria-hidden="true">
                                                 <path d="M6 9l6 6 6-6"/>
                                             </svg>
@@ -315,6 +315,7 @@
                                             </template>
                                         </div>
                                     </div>
+                                    <button @click="openNewScheduledChange()" class="btn btn-primary btn-sm" :disabled="saving">New</button>
                                     <button @click="loadScheduledChanges()" class="btn btn-ghost btn-sm" :disabled="scheduledLoading">Refresh</button>
                                     <button @click="closeScheduledView()" class="btn btn-ghost btn-sm">Close</button>
                                 </div>
@@ -325,7 +326,7 @@
                                 </template>
                                 <template x-if="!scheduledLoading && scheduledChanges.length === 0">
                                     <div class="empty-state" style="padding: 2rem;">
-                                        <p class="text-muted">No scheduled changes. Queue operations in Atomic mode and use "Save as Change".</p>
+                                        <p class="text-muted">No scheduled changes. Click New to create one, or queue operations in Atomic mode and use "Save as Change".</p>
                                     </div>
                                 </template>
 
@@ -333,7 +334,7 @@
                                     <div id="scheduled-change-detail" class="card scheduled-detail mb-2" style="background: var(--bg-tertiary); flex: 0 0 auto;">
                                         <div class="card-header">
                                             <h3 x-text="selectedScheduledChange.name"></h3>
-                                            <button @click="selectedScheduledChange = null" class="btn btn-ghost btn-sm">×</button>
+                                            <button @click="clearSelectedScheduledChange()" class="btn btn-ghost btn-sm">×</button>
                                         </div>
                                         <div class="card-body">
                                             <p>
@@ -517,12 +518,12 @@
                                 <div class="audit-filters mb-2">
                                     <div class="status-filter" @click.outside="showAuditEventMenu = false">
                                         <button type="button"
-                                                class="status-filter-toggle"
+                                                class="btn btn-ghost btn-sm status-filter-toggle"
                                                 @click="showAuditEventMenu = !showAuditEventMenu"
                                                 :aria-expanded="showAuditEventMenu"
                                                 aria-haspopup="listbox">
                                             <span class="status-filter-label" x-text="auditEventFilterLabel()"></span>
-                                            <svg class="status-filter-chevron" viewBox="0 0 24 24" fill="none"
+                                            <svg class="status-filter-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none"
                                                  stroke="currentColor" stroke-width="2" aria-hidden="true">
                                                 <path d="M6 9l6 6 6-6"/>
                                             </svg>
@@ -1179,7 +1180,7 @@
         <div class="modal-backdrop" @click.self="showNsupdate = false">
             <div class="modal" style="max-width: 700px;">
                 <div class="modal-header">
-                    <h3>NSUPDATE Batch</h3>
+                    <h3>NSUPDATE → Drafts</h3>
                     <button @click="showNsupdate = false" class="btn btn-ghost btn-icon btn-sm">×</button>
                 </div>
                 <div class="modal-body">
@@ -1189,24 +1190,18 @@
 prereq nxdomain newhost.example.com.
 update add newhost.example.com. 3600 A 192.0.2.100
 send"></textarea>
-                        <p class="form-hint">Enter nsupdate commands. Lines starting with ; or # are comments.</p>
+                        <p class="form-hint">
+                            Each <code>send</code> becomes one draft scheduled change (review, edit, preview, or Apply Now from Scheduled Changes).
+                            Lines starting with <code>;</code> or <code>#</code> are comments.
+                            <code>update delete</code> must include a record type.
+                        </p>
                     </div>
-                    <template x-if="nsupdateResult">
-                        <div class="card mt-2" :class="nsupdateResult.total_failed > 0 ? 'text-warning' : 'text-success'" style="background: var(--bg-tertiary);">
-                            <div class="card-body">
-                                <p><strong x-text="nsupdateResult.total_success + ' succeeded, ' + nsupdateResult.total_failed + ' failed'"></strong></p>
-                                <template x-for="tx in nsupdateResult.transactions">
-                                    <p class="text-muted" x-text="tx.zone + ': ' + tx.message"></p>
-                                </template>
-                            </div>
-                        </div>
-                    </template>
                 </div>
                 <div class="modal-footer">
                     <button @click="showNsupdate = false" class="btn btn-ghost">Close</button>
-                    <button @click="executeNsupdate()" class="btn btn-primary" :disabled="saving || !nsupdateText.trim()">
+                    <button @click="saveNsupdateAsDrafts()" class="btn btn-primary" :disabled="saving || !nsupdateText.trim()">
                         <span x-show="saving" class="spinner" style="width: 14px; height: 14px;"></span>
-                        Execute
+                        Save as Draft(s)
                     </button>
                 </div>
             </div>
@@ -1329,7 +1324,7 @@ send"></textarea>
         <div class="modal-backdrop" @click.self="closeScheduleModal()">
             <div class="modal" style="max-width: 720px;">
                 <div class="modal-header">
-                    <h3 x-text="scheduleMode === 'edit' ? 'Edit Scheduled Change' : 'Save as Scheduled Change'"></h3>
+                    <h3 x-text="scheduleModalTitle()"></h3>
                     <button @click="closeScheduleModal()" class="btn btn-ghost btn-icon btn-sm">×</button>
                 </div>
                 <div class="modal-body">
@@ -1340,6 +1335,15 @@ send"></textarea>
                     <div class="form-group">
                         <label>Description (optional)</label>
                         <textarea class="form-input" x-model="scheduleForm.description" rows="2"></textarea>
+                    </div>
+                    <div class="form-group" x-show="scheduleSource === 'new'">
+                        <label>Zone</label>
+                        <select class="form-select" x-model="scheduleZone" aria-label="Zone">
+                            <option value="">Select a zone…</option>
+                            <template x-for="z in zones" :key="z.zone">
+                                <option :value="z.zone" x-text="z.zone.replace(/\.$/, '')"></option>
+                            </template>
+                        </select>
                     </div>
                     <div class="form-group">
                         <label class="form-check">
@@ -1373,7 +1377,8 @@ send"></textarea>
                         <div class="form-group-header">
                             <label>Operations (<span x-text="scheduleOps.length"></span>)</label>
                             <div class="form-group-header-actions">
-                                <span class="text-muted text-sm" x-text="scheduleZone.replace(/\.$/, '')"></span>
+                                <span class="text-muted text-sm" x-show="scheduleSource !== 'new'"
+                                      x-text="scheduleZone.replace(/\.$/, '')"></span>
                                 <button type="button" class="btn btn-ghost btn-sm" @click="addScheduleOp()">+ Add</button>
                             </div>
                         </div>

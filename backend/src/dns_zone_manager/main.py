@@ -325,6 +325,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         scheduled.set_dns_client(dns_client)
         scheduled.set_zone_cache(zone_cache)
         scheduled.set_store(scheduled_store)
+        nsupdate.set_store(scheduled_store)
         scheduler_task = asyncio.create_task(
             run_scheduler_loop(
                 scheduled_store,

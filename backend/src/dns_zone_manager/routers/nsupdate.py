@@ -22,12 +22,22 @@ from dns_zone_manager.dns.nsupdate_parser import (
     UpdateAction,
     parse,
 )
+from dns_zone_manager.dns.nsupdate_to_scheduled import (
+    NSUpdateConversionError,
+    nsupdate_text_to_creates,
+)
+from dns_zone_manager.metrics import (
+    scheduled_changes_created_total,
+    scheduled_changes_pending,
+)
 from dns_zone_manager.middleware import enrich_dns_context, enrich_error_context
 from dns_zone_manager.models.requests import (
     NSUpdateOperation,
     NSUpdateResponse,
     NSUpdateTransactionResult,
 )
+from dns_zone_manager.models.scheduled import NSUpdateDraftsResponse
+from dns_zone_manager.scheduler.store import ChangeCreateData, ScheduledChangeStore
 
 logger = logging.getLogger(__name__)
 
@@ -35,12 +45,19 @@ router = APIRouter(prefix="/nsupdate", tags=["NSUPDATE"])
 
 # These will be injected by the main app
 _dns_client: DNSClient | None = None
+_store: ScheduledChangeStore | None = None
 
 
 def set_dns_client(client: DNSClient) -> None:
     """Set the DNS client instance."""
     global _dns_client
     _dns_client = client
+
+
+def set_store(store: ScheduledChangeStore) -> None:
+    """Set the scheduled change store instance."""
+    global _store
+    _store = store
 
 
 def get_dns_client() -> DNSClient:
@@ -51,6 +68,16 @@ def get_dns_client() -> DNSClient:
             detail="DNS client not initialized",
         )
     return _dns_client
+
+
+def get_store() -> ScheduledChangeStore:
+    """Get the scheduled change store dependency."""
+    if _store is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Scheduled change store not initialized",
+        )
+    return _store
 
 
 def _parsed_update_to_operations(parsed: ParsedUpdate) -> list[NSUpdateOperation]:
@@ -438,3 +465,130 @@ async def execute_nsupdate(
         total_success=total_success,
         total_failed=total_failed,
     )
+
+
+@router.post(
+    "/drafts",
+    response_model=NSUpdateDraftsResponse,
+    summary="Save NSUPDATE commands as draft scheduled changes",
+    description="""
+Parse nsupdate(1) text and create one **draft** scheduled change per `send`
+transaction. Drafts appear in the Scheduled Changes UI for review, edit,
+preview, and Apply Now.
+
+Does not send DDNS updates. Use `POST /v1/nsupdate` for immediate apply.
+""",
+    responses={
+        200: {"description": "Drafts created"},
+        400: {"description": "Parse or conversion error"},
+        503: {"description": "Scheduled store or DNS client not available"},
+    },
+)
+async def create_nsupdate_drafts(
+    http_request: Request,
+    body: Annotated[
+        str,
+        Body(
+            media_type="text/plain",
+            openapi_examples={
+                "add_record": {
+                    "summary": "Add a new A record",
+                    "value": (
+                        "zone example.com.\n"
+                        "prereq nxdomain newhost.example.com.\n"
+                        "update add newhost.example.com. 3600 A 192.0.2.100\n"
+                        "send\n"
+                    ),
+                },
+                "multiple_sends": {
+                    "summary": "Two transactions → two drafts",
+                    "value": (
+                        "zone example.com.\n"
+                        "update add a.example.com. 300 A 192.0.2.1\n"
+                        "send\n"
+                        "update add b.example.com. 300 A 192.0.2.2\n"
+                        "send\n"
+                    ),
+                },
+            },
+        ),
+    ],
+    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
+    store: Annotated[ScheduledChangeStore, Depends(get_store)],
+    zone: Annotated[
+        str | None,
+        Query(description="Default zone if not specified in the nsupdate text"),
+    ] = None,
+) -> NSUpdateDraftsResponse:
+    """Save nsupdate text as draft scheduled changes (one per send)."""
+    enrich_user_context(http_request, user)
+    enrich_dns_context(http_request, operation="nsupdate_drafts", default_zone=zone)
+
+    text = body
+    if not text.strip():
+        enrich_error_context(
+            http_request,
+            error_type="ValidationError",
+            message="Empty request body",
+            code="EMPTY_BODY",
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Empty request body",
+        )
+
+    default_zone = None
+    if zone:
+        default_zone = zone if zone.endswith(".") else zone + "."
+
+    try:
+        creates = nsupdate_text_to_creates(text, default_zone=default_zone)
+    except NSUpdateParseError as e:
+        enrich_error_context(
+            http_request,
+            error_type="NSUpdateParseError",
+            message=str(e),
+            code="PARSE_ERROR",
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Parse error: {e}",
+        )
+    except NSUpdateConversionError as e:
+        enrich_error_context(
+            http_request,
+            error_type="NSUpdateConversionError",
+            message=str(e),
+            code="CONVERSION_ERROR",
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+
+    created = []
+    for create in creates:
+        change = await store.create(
+            ChangeCreateData(
+                name=create.name,
+                description=create.description,
+                zone=create.zone,
+                operations=create.operations,
+                prerequisites=create.prerequisites,
+                scheduled_at=create.scheduled_at,
+                not_valid_after=create.not_valid_after,
+                auto_prerequisites=create.auto_prerequisites,
+                created_by=user.user_id,
+            )
+        )
+        scheduled_changes_created_total.inc()
+        created.append(change)
+
+    scheduled_changes_pending.set(await store.count_pending())
+    enrich_dns_context(
+        http_request,
+        drafts_created=len(created),
+        zones=[c.zone for c in created],
+    )
+
+    return NSUpdateDraftsResponse(created=created, total=len(created))

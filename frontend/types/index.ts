@@ -212,16 +212,9 @@ export interface PrereqRow {
   data: string;
 }
 
-export interface NsupdateResult {
-  total_success: number;
-  total_failed: number;
-  transactions: NsupdateTransaction[];
-}
-
-export interface NsupdateTransaction {
-  zone: string;
-  success: boolean;
-  message: string;
+export interface NsupdateDraftsResult {
+  created: ScheduledChange[];
+  total: number;
 }
 
 export interface ReversePtrCheckResult {
@@ -450,6 +443,8 @@ export interface AppState {
   scheduledLoading: boolean;
   scheduleForm: ScheduleForm;
   scheduleMode: 'create' | 'edit';
+  /** How the schedule modal was opened: from Atomic queue, New button, or Edit. */
+  scheduleSource: 'queue' | 'new' | 'edit';
   editingChangeId: string | null;
   scheduleOps: ScheduleOp[];
   scheduleZone: string;
@@ -502,7 +497,7 @@ export interface AppState {
   customClassMode: boolean;
   deleteTarget: DeleteTarget | null;
   nsupdateText: string;
-  nsupdateResult: NsupdateResult | null;
+  nsupdateResult: NsupdateDraftsResult | null;
 
   // Toasts
   toasts: Toast[];
@@ -528,4 +523,6 @@ export interface RouteParams {
   searchField: SearchField;
   searchAllZones: boolean;
   view: string | null;
+  /** Selected scheduled change id when view=scheduled */
+  change: string | null;
 }

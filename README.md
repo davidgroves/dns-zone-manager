@@ -1,5 +1,7 @@
 # DNS Zone Manager
 
+[![CI](https://github.com/davidgroves/dns-zone-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/davidgroves/dns-zone-manager/actions/workflows/ci.yml)
+
 A FastAPI-based DNS record management API that communicates with BIND (or another standards compliant DNS server) via DDNS updates (with TSIG authentication) and AXFR zone transfers.
 
 ## Features
@@ -11,6 +13,17 @@ A FastAPI-based DNS record management API that communicates with BIND (or anothe
 - **Dual Authentication**: Supports both Azure AD and API key authentication
 - **CLI Tool**: Optional command-line interface for scripting and automation
 - **YAML Configuration**: Configure via YAML file or environment variables
+
+## Container images
+
+Published to GitHub Container Registry on each `v*` tag:
+
+```bash
+docker pull ghcr.io/davidgroves/dns-zone-manager/backend:latest
+docker pull ghcr.io/davidgroves/dns-zone-manager/frontend:latest
+```
+
+Pin to a release with the tag (e.g. `:v0.3.0`). See [DEVELOPMENT.md](DEVELOPMENT.md) for the CI/CD pipeline.
 
 ## Development
 

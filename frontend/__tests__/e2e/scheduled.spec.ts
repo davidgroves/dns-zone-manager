@@ -19,9 +19,83 @@ test.describe('Scheduled Changes', () => {
     await expect(page.locator('h2:has-text("Scheduled Changes")')).toBeVisible({
       timeout: 5000,
     });
+    await expect(page).toHaveURL(/view=scheduled/);
     await expect(page.locator('.status-filter-toggle')).toContainText(
       'Draft, Scheduled, Failed',
     );
+  });
+
+  test('should put change id in the URL when viewing and restore via deep link', async ({
+    page,
+  }) => {
+    const unique = `url-e2e-${Date.now()}`;
+    await createDraft(page, unique);
+
+    await page.locator('button[title="Scheduled Changes"]').click();
+    const row = page.locator('.scheduled-table tr', { hasText: `E2E ${unique}` });
+    await expect(row).toBeVisible({ timeout: 10000 });
+
+    await row.locator('button:has-text("View")').click();
+    await expect(page.locator('#scheduled-change-detail h3')).toHaveText(
+      `E2E ${unique}`,
+      { timeout: 5000 },
+    );
+    await expect(page).toHaveURL(/view=scheduled/);
+    await expect(page).toHaveURL(/change=/);
+
+    const shareableUrl = page.url();
+    const changeMatch = shareableUrl.match(/[?&]change=([^&]+)/);
+    expect(changeMatch?.[1]).toBeTruthy();
+
+    await page.locator('#scheduled-change-detail button:has-text("×")').click();
+    await expect(page.locator('#scheduled-change-detail')).toHaveCount(0);
+    await expect(page).not.toHaveURL(/change=/);
+    await expect(page).toHaveURL(/view=scheduled/);
+
+    // Deep-link as if pasted into a new session (still authenticated)
+    await page.goto(shareableUrl);
+    await expect(page.locator('h2:has-text("Scheduled Changes")')).toBeVisible({
+      timeout: 10000,
+    });
+    await expect(page.locator('#scheduled-change-detail h3')).toHaveText(
+      `E2E ${unique}`,
+      { timeout: 10000 },
+    );
+    await expect(page).toHaveURL(new RegExp(`change=${changeMatch![1]}`));
+  });
+
+  test('should create a draft from the New button', async ({ page }) => {
+    await page.locator('button[title="Scheduled Changes"]').click();
+    await expect(page.locator('h2:has-text("Scheduled Changes")')).toBeVisible({
+      timeout: 5000,
+    });
+
+    await page.locator('.header-actions button:has-text("New")').click();
+    await expect(page.locator('h3:has-text("New Scheduled Change")')).toBeVisible({
+      timeout: 5000,
+    });
+
+    const unique = `new-e2e-${Date.now()}`;
+    const modal = page.locator('.modal-backdrop', {
+      has: page.locator('h3:has-text("New Scheduled Change")'),
+    });
+
+    await modal.locator('input[type="text"]').first().fill(`E2E ${unique}`);
+    await modal.locator('select[aria-label="Zone"]').selectOption({ label: 'example.com' });
+
+    const opRow = modal.locator('.schedule-op-row').first();
+    await opRow.locator('input[aria-label="Name"]').fill(unique);
+    await opRow.locator('input[aria-label="Type"]').fill('A');
+    await opRow.locator('textarea').fill('192.0.2.88');
+
+    await modal.locator('button:has-text("Save Change")').click();
+    await expect(page.locator('h3:has-text("New Scheduled Change")')).toBeHidden({
+      timeout: 10000,
+    });
+
+    const row = page.locator('.scheduled-table tr', { hasText: `E2E ${unique}` });
+    await expect(row).toBeVisible({ timeout: 10000 });
+    await expect(row.locator('.status-badge')).toContainText(/draft/i);
   });
 
   test('should filter by multiple statuses via checkbox menu', async ({ page }) => {

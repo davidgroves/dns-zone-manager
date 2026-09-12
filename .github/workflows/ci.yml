@@ -1,0 +1,81 @@
+# CI: pre-commit checks + unit tests + backend integration (BIND via testcontainers).
+# Playwright E2E is intentionally NOT run here — it requires a live stack and stays local-only
+# (see ./tests.sh --all / npm run test:e2e).
+name: CI
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+  workflow_call:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Pre-commit checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Run pre-commit (same hooks as local)
+        run: uv run pre-commit run --all-files --show-diff-on-failure
+
+  backend-unit:
+    name: Backend unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Run backend unit tests
+        run: uv run --extra dev pytest -m "not integration" -v
+
+  backend-integration:
+    name: Backend integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Run backend integration tests (BIND via testcontainers)
+        run: uv run --extra dev pytest tests/integration/ -v
+
+  frontend-unit:
+    name: Frontend unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Run frontend unit tests (vitest)
+        run: npm run test

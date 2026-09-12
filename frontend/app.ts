@@ -371,12 +371,14 @@ export function createApp(config: AppConfig) {
       const routeParams = parseUrlParams();
 
       // Store intended route if there's something meaningful in the URL
-      // (zone, search query, or page > 1)
+      // (zone, search, page > 1, scheduled/audit view, or scheduled change id)
       const hasRoute =
         routeParams.zone ||
         routeParams.searchQuery ||
         routeParams.searchType ||
-        routeParams.page > 1;
+        routeParams.page > 1 ||
+        routeParams.view ||
+        routeParams.change;
       if (hasRoute) {
         self.intendedRoute = routeParams;
       }

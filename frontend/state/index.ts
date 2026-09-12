@@ -103,6 +103,7 @@ export function createInitialState(config: AppConfig): AppState {
       autoPrerequisites: true,
     },
     scheduleMode: 'create',
+    scheduleSource: 'new',
     editingChangeId: null,
     scheduleOps: [],
     scheduleZone: '',

@@ -1,5 +1,5 @@
 import { API_BASE, api, formatDNSError } from '../api/client';
-import type { AppState, AuditEvent, ChangeStatus } from '../types';
+import type { AppState, AuditEvent } from '../types';
 import { formatAuditDetail, formatLocalDisplay } from './scheduledHelpers';
 
 const ALL_AUDIT_EVENTS = [
@@ -17,10 +17,8 @@ const ALL_AUDIT_EVENTS = [
 type AuditMethodContext = AppState & {
   toast: (message: string, type?: 'success' | 'error' | 'warning') => void;
   updateUrlFromState: () => void;
-  openScheduledView: () => void;
-  viewScheduledChange: (id: string) => Promise<void>;
+  openScheduledChangeById: (id: string) => Promise<void>;
   closeScheduledView: () => void;
-  loadScheduledChanges: () => Promise<void>;
   loadAuditEvents: () => Promise<void>;
   closeAuditView: () => void;
 };
@@ -169,20 +167,7 @@ export function createAuditMethods(_state: AppState) {
 
     async openChangeFromAudit(this: AuditMethodContext, changeId: string) {
       this.closeAuditView();
-      this.openScheduledView();
-      // Include terminal statuses so the linked change is visible after open.
-      this.scheduledStatusFilters = [
-        'draft',
-        'scheduled',
-        'failed',
-        'applied',
-        'reverted',
-        'cancelled',
-        'expired',
-        'running',
-      ] as ChangeStatus[];
-      await this.loadScheduledChanges();
-      await this.viewScheduledChange(changeId);
+      await this.openScheduledChangeById(changeId);
     },
   };
 }

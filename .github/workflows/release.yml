@@ -1,0 +1,111 @@
+# On a v* tag: run the full CI suite, publish backend/frontend images to GHCR,
+# build the Python sdist/wheel, and create a GitHub Release with those assets.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  test:
+    name: CI
+    uses: ./.github/workflows/ci.yml
+
+  images:
+    name: Publish container images
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: backend
+            dockerfile: Dockerfile
+          - name: frontend
+            dockerfile: Dockerfile.frontend
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # hatch-vcs needs full history/tags; backend Dockerfile copies .git
+          fetch-depth: 0
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}/${{ matrix.name }}
+          tags: |
+            type=ref,event=tag
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ github.ref_name }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+  dist:
+    name: Build Python distribution
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Build sdist and wheel
+        run: uv build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-dist
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: GitHub Release
+    needs: [images, dist]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: python-dist
+          path: dist
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: dist/*
+          body: |
+            ## Container images
+
+            ```bash
+            docker pull ghcr.io/${{ github.repository }}/backend:${{ github.ref_name }}
+            docker pull ghcr.io/${{ github.repository }}/frontend:${{ github.ref_name }}
+            ```
+
+            Also tagged as `latest`.

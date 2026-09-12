@@ -144,32 +144,53 @@ npx playwright test --project=webkit
 npx playwright test --project=ipad
 ```
 
-## Dependency Updates (Renovate)
+## CI/CD (GitHub Actions)
 
-Renovate opens daily dependency update PRs for Python (`uv`) and npm packages. Configuration lives in `renovate.json5`. PRs require manual review and merge (`automerge: false`).
+Workflows live in `.github/workflows/`.
 
-### One-time setup (Codeberg + Woodpecker)
+### On every push and pull request (`ci.yml`)
 
-1. **Create a Renovate bot account** on Codeberg (e.g. `renovate-bot`) with full name and email configured.
-2. **Grant write access** to the bot on `davidgroves/dns-zone-manager`.
-3. **Create a Personal Access Token** for the bot with scopes: `repo` (read+write), `issue` (read+write), `organization` (read), `user` (read). The `user: read` scope is required — Renovate calls `GET /api/v1/user` on startup to identify the bot account, and the run fails with `Initialization error: Authentication failure` without it.
-4. **Add a Woodpecker secret** named `renovate_token` with the bot PAT (repo settings → Secrets).
-5. **Create a Woodpecker cron job** named `renovate` on branch `main`, schedule `@daily`:
-   ```bash
-   woodpecker cron add \
-     --repository davidgroves/dns-zone-manager \
-     --name renovate \
-     --branch main \
-     --schedule "@daily"
-   ```
-6. **(Optional) Add a `github_com_token` secret** — a read-only github.com PAT (classic, *no scopes*) used only to fetch changelogs/release notes for dependencies and avoid github.com API rate limiting. Without it Renovate still works but logs `Rate limit exceeded for api.github.com`. Enable the secret for at least the `cron` event.
-7. **Verify**: manually trigger the `renovate` cron once. Confirm Renovate opens a Dependency Dashboard issue and/or update PRs, and that Woodpecker runs `test-backend` and `test-frontend` on those PRs.
+Four parallel jobs:
 
-The Renovate step is in `.woodpecker.yaml` (cron event only; other steps are skipped on cron).
+1. **Pre-commit checks** — `uv run pre-commit run --all-files` (ruff, ruff-format, ty, tsc)
+2. **Backend unit tests** — `pytest -m "not integration"`
+3. **Backend integration tests** — `pytest tests/integration/` (BIND via testcontainers; needs Docker on the runner)
+4. **Frontend unit tests** — `npm run test` (vitest)
+
+Playwright E2E is **not** run in CI. Run it locally with a live stack:
+
+```bash
+./tests.sh --all          # unit + integration + Playwright (needs servers)
+npm run test:e2e          # Playwright only (needs backend + BIND + vite)
+```
+
+### On a version tag (`release.yml`)
+
+Pushing a tag matching `v*` (e.g. `v0.4.0`):
+
+1. Runs the full CI suite (via `workflow_call`)
+2. Builds and pushes container images to GHCR:
+   - `ghcr.io/davidgroves/dns-zone-manager/backend:<tag>` (+ `latest`)
+   - `ghcr.io/davidgroves/dns-zone-manager/frontend:<tag>` (+ `latest`)
+3. Builds the Python sdist/wheel (`uv build`)
+4. Creates a GitHub Release with generated notes and the dist files attached
+
+```bash
+git tag v0.4.0
+git push origin v0.4.0
+```
+
+#### One-time: make GHCR packages public
+
+The first release creates the packages as private. In the GitHub repo → **Packages**, open each of `backend` and `frontend`, then **Package settings** → **Change visibility** → Public.
 
 ### Optional: branch protection
 
-In Codeberg repo settings, require pull requests and passing status checks before merging to `main`.
+In GitHub repo settings → Branches, require pull requests and the CI status checks before merging to `main`.
+
+## Dependency Updates (Renovate)
+
+Renovate (GitHub App) opens daily dependency update PRs for Python (`uv`) and npm packages. Configuration lives in `renovate.json5`. PRs require manual review and merge (`automerge: false`).
 
 ## Code Quality
 

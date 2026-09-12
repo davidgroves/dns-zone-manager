@@ -14,6 +14,7 @@ describe('URL_PARAMS', () => {
     expect(URL_PARAMS.field).toBe('field');
     expect(URL_PARAMS.allZones).toBe('all');
     expect(URL_PARAMS.view).toBe('view');
+    expect(URL_PARAMS.change).toBe('change');
   });
 });
 
@@ -29,6 +30,7 @@ describe('parseSearchString', () => {
       searchField: 'either',
       searchAllZones: false,
       view: null,
+      change: null,
     });
   });
 
@@ -123,6 +125,7 @@ describe('parseSearchString', () => {
       searchField: 'name',
       searchAllZones: false,
       view: null,
+      change: null,
     });
   });
 
@@ -137,6 +140,7 @@ describe('parseSearchString', () => {
       searchField: 'data',
       searchAllZones: true,
       view: null,
+      change: null,
     });
   });
 
@@ -162,6 +166,20 @@ describe('parseSearchString', () => {
     const params = parseSearchString('?view=audit');
     expect(params.view).toBe('audit');
   });
+
+  it('should parse scheduled change id', () => {
+    const params = parseSearchString(
+      '?view=scheduled&change=abc-123-def',
+    );
+    expect(params.view).toBe('scheduled');
+    expect(params.change).toBe('abc-123-def');
+  });
+
+  it('should parse change without view', () => {
+    const params = parseSearchString('?change=abc-123-def');
+    expect(params.change).toBe('abc-123-def');
+    expect(params.view).toBeNull();
+  });
 });
 
 describe('buildQueryString', () => {
@@ -174,6 +192,15 @@ describe('buildQueryString', () => {
   it('should include audit view', () => {
     const url = buildQueryString({ view: 'audit' });
     expect(url).toBe('?view=audit');
+  });
+
+  it('should include scheduled change id with view', () => {
+    const url = buildQueryString({
+      view: 'scheduled',
+      change: 'change-uuid-1',
+    });
+    expect(url).toContain('view=scheduled');
+    expect(url).toContain('change=change-uuid-1');
   });
 
   it('should build query string with zone', () => {
@@ -360,6 +387,18 @@ describe('URL round-trip', () => {
     expect(queryString).not.toContain('field=');
     // But parsing returns 'either' as the default
     expect(parsed.searchField).toBe('either');
+  });
+
+  it('should round-trip scheduled change deep link', () => {
+    const original = {
+      view: 'scheduled',
+      change: '550e8400-e29b-41d4-a716-446655440000',
+    };
+    const queryString = buildQueryString(original);
+    const parsed = parseSearchString(queryString);
+
+    expect(parsed.view).toBe('scheduled');
+    expect(parsed.change).toBe(original.change);
   });
 });
 

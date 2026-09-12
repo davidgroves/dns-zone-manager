@@ -51,6 +51,7 @@ type ScheduledMethodContext = AppState & {
   loadZones: (cursor?: string | null, resetHistory?: boolean) => Promise<void>;
   updateUrlFromState: () => void;
   loadScheduledChanges: () => Promise<void>;
+  openScheduledView: () => void;
   viewScheduledChange: (id: string) => Promise<void>;
   runScheduledPreview: (
     id: string,
@@ -87,6 +88,7 @@ export function createScheduledMethods(_state: AppState) {
         return;
       }
       this.scheduleMode = 'create';
+      this.scheduleSource = 'queue';
       this.editingChangeId = null;
       this.scheduleZone = zones[0];
       this.scheduleOps = this.atomicQueue.map((op) =>
@@ -114,6 +116,35 @@ export function createScheduledMethods(_state: AppState) {
     },
 
     /**
+     * Open an empty schedule modal to create a change from scratch.
+     */
+    async openNewScheduledChange(this: ScheduledMethodContext) {
+      if (this.zones.length === 0) {
+        await this.loadZones();
+      }
+      const defaultZone =
+        this.selectedZone ||
+        (this.zones.length === 1 ? this.zones[0].zone : '') ||
+        '';
+      this.scheduleMode = 'create';
+      this.scheduleSource = 'new';
+      this.editingChangeId = null;
+      this.scheduleZone = defaultZone;
+      this.scheduleOps = [blankScheduleOp()];
+      this.scheduleForm = {
+        name: '',
+        description: '',
+        applyNow: true,
+        scheduledLocal: '',
+        expiryHours: 1,
+        autoPrerequisites: true,
+      };
+      this.prereqRows = [];
+      this.previewResult = null;
+      this.showScheduleModal = true;
+    },
+
+    /**
      * Open the schedule modal to edit an existing change.
      */
     async editScheduledChange(this: ScheduledMethodContext, id: string) {
@@ -135,6 +166,7 @@ export function createScheduledMethods(_state: AppState) {
         }
 
         this.scheduleMode = 'edit';
+        this.scheduleSource = 'edit';
         this.editingChangeId = change.id;
         this.scheduleZone = change.zone;
         this.scheduleOps = change.operations.map((op) =>
@@ -198,8 +230,20 @@ export function createScheduledMethods(_state: AppState) {
       this.showScheduleModal = false;
       this.previewResult = null;
       this.scheduleMode = 'create';
+      this.scheduleSource = 'new';
       this.editingChangeId = null;
       this.scheduleOps = [];
+      this.scheduleZone = '';
+    },
+
+    scheduleModalTitle(this: ScheduledMethodContext): string {
+      if (this.scheduleMode === 'edit' || this.scheduleSource === 'edit') {
+        return 'Edit Scheduled Change';
+      }
+      if (this.scheduleSource === 'queue') {
+        return 'Save as Scheduled Change';
+      }
+      return 'New Scheduled Change';
     },
 
     /**
@@ -208,6 +252,11 @@ export function createScheduledMethods(_state: AppState) {
     async saveScheduledChange(this: ScheduledMethodContext) {
       if (!this.scheduleForm.name.trim()) {
         this.toast('Name is required', 'error');
+        return;
+      }
+      const isEdit = this.scheduleMode === 'edit' && this.editingChangeId;
+      if (!isEdit && !this.scheduleZone.trim()) {
+        this.toast('Zone is required', 'error');
         return;
       }
       const opsError = validateScheduleOps(this.scheduleOps);
@@ -223,18 +272,20 @@ export function createScheduledMethods(_state: AppState) {
         return;
       }
 
-      const isEdit = this.scheduleMode === 'edit' && this.editingChangeId;
-
       this.saving = true;
       try {
         const url = isEdit
           ? `${API_BASE}/scheduled-changes/${encodeURIComponent(this.editingChangeId as string)}`
           : `${API_BASE}/scheduled-changes`;
+        let zone = this.scheduleZone.trim();
+        if (!isEdit && zone && !zone.endsWith('.')) {
+          zone = `${zone}.`;
+        }
         const payload = isEdit
           ? buildUpdatePayload(this.scheduleForm, this.scheduleOps, this.prereqRows)
           : buildCreatePayload(
               this.scheduleForm,
-              this.scheduleZone,
+              zone,
               this.scheduleOps,
               this.prereqRows,
             );
@@ -258,8 +309,11 @@ export function createScheduledMethods(_state: AppState) {
               : `Saved draft "${data.name}"`,
             'success',
           );
-          this.atomicQueue = [];
-          this.atomicMode = false;
+          // Only clear the Atomic queue when this change was created from it.
+          if (this.scheduleSource === 'queue') {
+            this.atomicQueue = [];
+            this.atomicMode = false;
+          }
         }
 
         this.closeScheduleModal();
@@ -357,8 +411,26 @@ export function createScheduledMethods(_state: AppState) {
       void this.loadScheduledChanges();
     },
 
+    /**
+     * Open scheduled view and select a change by id (for deep links / audit).
+     * Widens status filters so terminal statuses remain visible in the list.
+     */
+    async openScheduledChangeById(this: ScheduledMethodContext, id: string) {
+      this.openScheduledView();
+      this.scheduledStatusFilters = [...ALL_CHANGE_STATUSES];
+      await this.loadScheduledChanges();
+      await this.viewScheduledChange(id);
+    },
+
     closeScheduledView(this: ScheduledMethodContext) {
       this.showScheduledView = false;
+      this.selectedScheduledChange = null;
+      this.previewResult = null;
+      this.previewLoading = false;
+      this.updateUrlFromState();
+    },
+
+    clearSelectedScheduledChange(this: ScheduledMethodContext) {
       this.selectedScheduledChange = null;
       this.previewResult = null;
       this.previewLoading = false;
@@ -374,11 +446,14 @@ export function createScheduledMethods(_state: AppState) {
         if (!response.ok) {
           const data = await response.json();
           this.toast(formatDNSError(data), 'error');
+          this.selectedScheduledChange = null;
+          this.updateUrlFromState();
           return;
         }
         const change = (await response.json()) as ScheduledChange;
         this.selectedScheduledChange = change;
         this.previewResult = null;
+        this.updateUrlFromState();
         // Detail panel sits above the table; scroll it into view after Alpine renders.
         const scroll = () =>
           document
@@ -396,6 +471,8 @@ export function createScheduledMethods(_state: AppState) {
         }
       } catch (e) {
         this.toast((e as Error).message, 'error');
+        this.selectedScheduledChange = null;
+        this.updateUrlFromState();
       }
     },
 
@@ -539,6 +616,8 @@ export function createScheduledMethods(_state: AppState) {
         this.toast('Change cancelled', 'success');
         if (this.selectedScheduledChange?.id === id) {
           this.selectedScheduledChange = null;
+          this.previewResult = null;
+          this.updateUrlFromState();
         }
         await this.loadScheduledChanges();
       } catch (e) {

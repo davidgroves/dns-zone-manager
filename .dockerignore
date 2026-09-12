@@ -1,0 +1,33 @@
+# Keep .git — the backend Dockerfile copies it for hatch-vcs versioning.
+
+# Local environments / caches
+.venv/
+node_modules/
+.pytest_cache/
+.ruff_cache/
+.vite/
+.tmp/
+
+# Build and test outputs
+dist/
+test-results/
+playwright-report/
+coverage/
+htmlcov/
+*.egg-info/
+
+# Python bytecode
+**/__pycache__/
+**/*.py[cod]
+**/*$py.class
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Devcontainer and CI config (not needed in images)
+.devcontainer/
+.github/
+.pre-commit-config.yaml

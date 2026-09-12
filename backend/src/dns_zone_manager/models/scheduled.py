@@ -216,6 +216,16 @@ class ScheduledChangeListResponse(BaseModel):
     total: int
 
 
+class NSUpdateDraftsResponse(BaseModel):
+    """Response when nsupdate text is saved as draft scheduled changes."""
+
+    created: list[ScheduledChangeResponse] = Field(
+        ...,
+        description="Created draft scheduled changes",
+    )
+    total: int = Field(..., description="Number of drafts created")
+
+
 class PrerequisitePreviewResult(BaseModel):
     """Result of evaluating one prerequisite against the cache."""
 

@@ -13,6 +13,9 @@ import {
   utcIsoToLocalDatetime,
   validateScheduleOps,
 } from '../../modules/scheduledHelpers';
+import { createScheduledMethods } from '../../modules/scheduled';
+import { createInitialState } from '../../state';
+import type { AppState } from '../../types';
 
 describe('localDatetimeToUtcIso', () => {
   it('returns null for empty input', () => {
@@ -457,5 +460,161 @@ describe('formatAuditDetail', () => {
 
   it('returns empty string when no detail', () => {
     expect(formatAuditDetail({ event: 'claimed', detail: null })).toBe('');
+  });
+});
+
+function makeScheduledCtx(overrides: Partial<AppState> = {}) {
+  const state = createInitialState({});
+  Object.assign(state, overrides);
+  const methods = createScheduledMethods(state);
+  const toasts: Array<{ message: string; type?: string }> = [];
+  const ctx = {
+    ...state,
+    ...methods,
+    toast(message: string, type?: string) {
+      toasts.push({ message, type });
+    },
+    async loadZones() {
+      if (ctx.zones.length === 0) {
+        ctx.zones = [{ zone: 'loaded.example.' }];
+      }
+    },
+    async loadRecords() {},
+    updateUrlFromState() {},
+    async loadScheduledChanges() {},
+    async viewScheduledChange() {},
+    async runScheduledPreview() {},
+  };
+  return { ctx, toasts, methods };
+}
+
+describe('openNewScheduledChange', () => {
+  it('opens the modal with one blank op and scheduleSource new', async () => {
+    const { ctx } = makeScheduledCtx({
+      zones: [{ zone: 'example.com.' }, { zone: 'other.com.' }],
+      selectedZone: 'example.com.',
+    });
+
+    await ctx.openNewScheduledChange();
+
+    expect(ctx.showScheduleModal).toBe(true);
+    expect(ctx.scheduleMode).toBe('create');
+    expect(ctx.scheduleSource).toBe('new');
+    expect(ctx.scheduleZone).toBe('example.com.');
+    expect(ctx.scheduleOps).toHaveLength(1);
+    expect(ctx.scheduleOps[0].name).toBe('');
+    expect(ctx.scheduleForm.name).toBe('');
+    expect(ctx.scheduleForm.applyNow).toBe(true);
+    expect(ctx.editingChangeId).toBeNull();
+  });
+
+  it('defaults to the only zone when none is selected', async () => {
+    const { ctx } = makeScheduledCtx({
+      zones: [{ zone: 'solo.example.' }],
+      selectedZone: null,
+    });
+
+    await ctx.openNewScheduledChange();
+
+    expect(ctx.scheduleZone).toBe('solo.example.');
+  });
+
+  it('loads zones when the list is empty', async () => {
+    const { ctx } = makeScheduledCtx({ zones: [], selectedZone: null });
+
+    await ctx.openNewScheduledChange();
+
+    expect(ctx.zones).toEqual([{ zone: 'loaded.example.' }]);
+    expect(ctx.scheduleZone).toBe('loaded.example.');
+  });
+
+  it('does not clear an existing atomic queue', async () => {
+    const { ctx } = makeScheduledCtx({
+      zones: [{ zone: 'example.com.' }],
+      atomicMode: true,
+      atomicQueue: [
+        {
+          action: 'add',
+          zone: 'example.com.',
+          name: 'www',
+          type: 'A',
+          rdclass: 'IN',
+          ttl: 3600,
+          records: ['192.0.2.1'],
+        },
+      ],
+    });
+
+    await ctx.openNewScheduledChange();
+
+    expect(ctx.atomicMode).toBe(true);
+    expect(ctx.atomicQueue).toHaveLength(1);
+  });
+});
+
+describe('openScheduleFromQueue', () => {
+  it('sets scheduleSource to queue and keeps Save as title', () => {
+    const { ctx } = makeScheduledCtx({
+      atomicQueue: [
+        {
+          action: 'add',
+          zone: 'example.com.',
+          name: 'www',
+          type: 'A',
+          rdclass: 'IN',
+          ttl: 3600,
+          records: ['192.0.2.1'],
+        },
+      ],
+    });
+
+    ctx.openScheduleFromQueue();
+
+    expect(ctx.scheduleSource).toBe('queue');
+    expect(ctx.scheduleModalTitle()).toBe('Save as Scheduled Change');
+    expect(ctx.scheduleZone).toBe('example.com.');
+    expect(ctx.scheduleOps).toHaveLength(1);
+  });
+});
+
+describe('scheduleModalTitle', () => {
+  it('returns New / Save as / Edit based on scheduleSource', () => {
+    const { ctx } = makeScheduledCtx();
+    ctx.scheduleSource = 'new';
+    expect(ctx.scheduleModalTitle()).toBe('New Scheduled Change');
+    ctx.scheduleSource = 'queue';
+    expect(ctx.scheduleModalTitle()).toBe('Save as Scheduled Change');
+    ctx.scheduleMode = 'edit';
+    ctx.scheduleSource = 'edit';
+    expect(ctx.scheduleModalTitle()).toBe('Edit Scheduled Change');
+  });
+});
+
+describe('saveScheduledChange validation', () => {
+  it('requires a zone when creating', async () => {
+    const { ctx, toasts } = makeScheduledCtx({
+      scheduleMode: 'create',
+      scheduleSource: 'new',
+      scheduleZone: '',
+      scheduleForm: {
+        name: 'Needs zone',
+        description: '',
+        applyNow: true,
+        scheduledLocal: '',
+        expiryHours: 1,
+        autoPrerequisites: true,
+      },
+      scheduleOps: [
+        blankScheduleOp({
+          name: 'www',
+          type: 'A',
+          records: ['192.0.2.1'],
+        }),
+      ],
+    });
+
+    await ctx.saveScheduledChange();
+
+    expect(toasts).toEqual([{ message: 'Zone is required', type: 'error' }]);
   });
 });

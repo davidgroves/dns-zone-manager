@@ -1745,30 +1745,25 @@ button.btn-link:hover {
     position: relative;
 }
 
+/* Builds on .btn.btn-ghost.btn-sm so the trigger always matches themed buttons
+   even if a stylesheet fails to load these extras. */
 .status-filter-toggle {
-    display: inline-flex;
-    align-items: center;
     justify-content: space-between;
     gap: 0.5rem;
     width: auto;
     min-width: 11rem;
     max-width: 18rem;
-    padding: 0.35rem 0.65rem;
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
     background: var(--bg-tertiary);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius);
     color: var(--text-primary);
-    font: inherit;
-    font-size: 0.85rem;
     text-align: left;
-    cursor: pointer;
-    appearance: none;
-    -webkit-appearance: none;
 }
 
 .status-filter-toggle:hover {
     background: var(--bg-hover);
     border-color: var(--text-muted);
+    color: var(--text-primary);
 }
 
 .status-filter-toggle[aria-expanded="true"] {

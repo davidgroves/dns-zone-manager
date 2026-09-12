@@ -34,7 +34,8 @@ jobs:
         run: npm ci
 
       - name: Run pre-commit (same hooks as local)
-        run: uv run pre-commit run --all-files --show-diff-on-failure
+        # --extra dev installs ty/ruff so the local hooks (uv run ty …) work
+        run: uv run --extra dev pre-commit run --all-files --show-diff-on-failure
 
   backend-unit:
     name: Backend unit tests

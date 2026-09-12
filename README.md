@@ -64,6 +64,16 @@ api_key:
 cache:
   enabled: true
 
+# Scheduled changes (intent store — not zone state)
+scheduler:
+  enabled: true
+  database_path: /var/lib/dns-zone-manager/scheduler.db
+  poll_interval: 10
+  max_attempts: 3
+  retry_backoff: 60
+  lease_ttl: 120
+  default_expiry_window: 3600
+
 logging:
   format: json
   level: INFO
@@ -95,10 +105,16 @@ AZURE_AD_CLIENT_ID=your-client-id
 # Cache Settings
 CACHE_ENABLED=true
 
+# Scheduler (scheduled DNS changes)
+SCHEDULER_ENABLED=true
+SCHEDULER_DATABASE_PATH=/var/lib/dns-zone-manager/scheduler.db
+
 # Logging
 LOG_FORMAT=json
 LOG_LEVEL=INFO
 ```
+
+Scheduled changes store **intent** (what to apply later) in SQLite, not zone state. After a change is `applied`, you can `POST /v1/scheduled-changes/{id}/revert` to undo it immediately if a pre-apply snapshot was captured; status becomes `reverted`. Changes applied before snapshot support cannot be reverted.
 
 See `examples/config.example.yaml` for all available options.
 

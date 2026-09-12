@@ -56,7 +56,7 @@ export function createAtomicMethods(_state: AppState) {
     },
 
     /**
-     * Submit atomic operations queue.
+     * Submit atomic operations queue (Apply Now).
      */
     async submitAtomicQueue(this: AtomicMethodContext) {
       if (this.atomicQueue.length === 0) return;

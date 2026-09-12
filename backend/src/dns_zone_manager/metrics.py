@@ -1,6 +1,6 @@
 """Prometheus metrics for DNS Zone Manager."""
 
-from prometheus_client import Counter, Gauge
+from prometheus_client import Counter, Gauge, Histogram
 
 # Authentication metrics
 logins_total = Counter(
@@ -92,4 +92,43 @@ cache_size_bytes = Gauge(
 cache_evictions_total = Counter(
     "dns_zone_manager_cache_evictions_total",
     "Total number of zones evicted from cache due to size limits",
+)
+
+# Scheduled change metrics
+scheduled_changes_created_total = Counter(
+    "dns_zone_manager_scheduled_changes_created_total",
+    "Total number of scheduled changes created",
+)
+
+scheduled_changes_applied_total = Counter(
+    "dns_zone_manager_scheduled_changes_applied_total",
+    "Total number of scheduled changes applied",
+    ["trigger"],  # scheduler, apply_now
+)
+
+scheduled_changes_failed_total = Counter(
+    "dns_zone_manager_scheduled_changes_failed_total",
+    "Total number of scheduled change execution failures",
+    ["reason"],  # prereq_failed, update_error, build_error, unexpected
+)
+
+scheduled_changes_expired_total = Counter(
+    "dns_zone_manager_scheduled_changes_expired_total",
+    "Total number of scheduled changes that expired without applying",
+)
+
+scheduled_changes_reverted_total = Counter(
+    "dns_zone_manager_scheduled_changes_reverted_total",
+    "Total number of scheduled changes successfully reverted",
+)
+
+scheduled_changes_pending = Gauge(
+    "dns_zone_manager_scheduled_changes_pending",
+    "Number of pending scheduled changes (draft/scheduled/failed/running)",
+)
+
+scheduled_change_lateness_seconds = Histogram(
+    "dns_zone_manager_scheduled_change_lateness_seconds",
+    "Seconds between scheduled_at and actual application",
+    buckets=(1, 5, 15, 30, 60, 120, 300, 600, 1800, 3600),
 )

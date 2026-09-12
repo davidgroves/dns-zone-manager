@@ -6,9 +6,10 @@
   "shutdownAction": "stopCompose",
   "remoteEnv": {
     "TESTCONTAINERS_HOST_OVERRIDE": "host.docker.internal",
-    "TESTCONTAINERS_RYUK_DISABLED": "true"
+    "TESTCONTAINERS_RYUK_DISABLED": "true",
+    "PLAYWRIGHT_BROWSERS_PATH": "/ms-playwright"
   },
-  "postCreateCommand": "npm install && npx playwright install && uv sync --extra cli --extra api --extra dev && uv run pre-commit install && uv run pre-commit install-hooks",
+  "postCreateCommand": "npm install && npx playwright install --with-deps && uv sync --extra cli --extra api --extra dev && uv run pre-commit install && uv run pre-commit install-hooks",
   "postStartCommand": "if [ -S /var/run/docker.sock ]; then DOCKER_GID=$(stat -c '%g' /var/run/docker.sock 2>/dev/null || stat -f '%g' /var/run/docker.sock 2>/dev/null); if [ -n \"$DOCKER_GID\" ]; then getent group docker >/dev/null 2>&1 || sudo groupadd -g $DOCKER_GID docker 2>/dev/null || sudo groupadd docker 2>/dev/null || true; getent group docker >/dev/null 2>&1 && sudo usermod -aG docker vscode 2>/dev/null || true; fi; sudo chmod 666 /var/run/docker.sock 2>/dev/null || true; fi && uv sync --extra cli --extra api --extra dev --quiet && echo '\\n✅ Devcontainer ready!\\n\\n🚀 Start services:\\n   Cmd/Ctrl+Shift+P → Tasks: Run Build Task\\n   Or: Terminal → Run Build Task\\n\\n🔗 URLs (after starting):\\n   Frontend: http://localhost:5173\\n   Backend:  http://localhost:8000\\n   Swagger:  http://localhost:8000/docs\\n   API Key:  demo-api-key-12345\\n\\n🧪 Testing:\\n   ./tests.sh              # Unit tests only\\n   ./tests.sh --all        # All tests (unit + integration + E2E)\\n   npm run test:e2e:ui     # Playwright UI → http://localhost:9323\\n   npm run test:e2e:report # Test report  → http://localhost:9324\\n\\n🔧 DNS Tools (dig):\\n   dig @bind -p 15353 example.com           # Query A record\\n   dig @bind -p 15353 example.com ANY        # Query all records\\n   dig @bind -p 15353 example.com SOA +short # SOA serial\\n\\n📦 Zone Transfers (AXFR/IXFR):\\n   dig @bind -p 15353 example.com AXFR -k /etc/dns-api-key.conf\\n   dig @bind -p 15353 example.com IXFR=12345 -k /etc/dns-api-key.conf\\n\\n✏️  Dynamic Updates (nsupdate):\\n   nsupdate -k /etc/dns-api-key.conf <<EOF\\n   server bind 15353\\n   zone example.com\\n   update add test.example.com 300 A 192.0.2.100\\n   send\\n   EOF\\n\\n🔧 RNDC Server Control:\\n   rndc status\\n   rndc zonestatus example.com\\n'",
   "forwardPorts": [5173, 8000, 9323, 9324],
   "portsAttributes": {

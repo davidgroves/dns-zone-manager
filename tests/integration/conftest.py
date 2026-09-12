@@ -28,12 +28,17 @@ def bind_server() -> Generator[BindContainer]:
         container.stop()
 
 
-def _make_config_yaml(bind_server: BindContainer, auth_enabled: bool = False) -> str:
+def _make_config_yaml(
+    bind_server: BindContainer,
+    auth_enabled: bool = False,
+    scheduler_db: str | None = None,
+) -> str:
     """Create YAML config for the test.
 
     Args:
         bind_server: Running BIND container
         auth_enabled: Whether to enable API key authentication
+        scheduler_db: Optional path for the scheduler SQLite database
 
     Returns:
         YAML configuration string
@@ -63,6 +68,9 @@ api_key:
   enabled: false
 """
 
+    if scheduler_db is None:
+        scheduler_db = tempfile.mktemp(suffix="-scheduler.db")
+
     return f"""
 # Integration test configuration
 tsig_keys:
@@ -89,6 +97,15 @@ catalog:
 
 notify:
   enabled: false
+
+scheduler:
+  enabled: true
+  database_path: {scheduler_db}
+  poll_interval: 1
+  max_attempts: 3
+  retry_backoff: 1
+  lease_ttl: 30
+  default_expiry_window: 3600
 
 debug: false
 """

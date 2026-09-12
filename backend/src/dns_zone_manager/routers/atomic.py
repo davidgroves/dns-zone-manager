@@ -2,11 +2,6 @@
 
 from typing import Annotated
 
-import dns.name
-import dns.rdata
-import dns.rdataclass
-import dns.rdatatype
-import dns.update
 from fastapi import APIRouter, Depends, HTTPException, Path, Request, status
 
 from dns_zone_manager.auth.combined import AuthenticatedUser, enrich_user_context, get_current_user
@@ -22,6 +17,11 @@ from dns_zone_manager.dns.types import (
     is_valid_class,
     is_valid_type,
     normalize_class,
+)
+from dns_zone_manager.dns.update_builder import (
+    UpdateBuildError,
+    apply_cache_updates,
+    build_update,
 )
 from dns_zone_manager.metrics import (
     ddns_updates_failed,
@@ -219,163 +219,40 @@ async def atomic_update(
 
     enrich_dns_context(http_request, operations=operations_summary)
 
-    # Build single DNS UPDATE message with all operations
-    zone_name = dns.name.from_text(zone)
-    update = dns.update.Update(
-        zone_name,
-        keyring=dns_client.keyring,
-        keyname=dns_client.keyname,
-        keyalgorithm=dns_client.keyalgorithm,
-    )
-
-    # Track what we need to update in cache
-    cache_updates: list[dict] = []
-
-    for i, op in enumerate(request.operations):
-        rdtype = op.type.upper()
-        rdclass = normalize_class(op.rdclass)
-        rdtype_obj = dns.rdatatype.from_text(rdtype)
-        rdclass_obj = dns.rdataclass.from_text(rdclass)
-        fqdn = dns_client.normalize_name(op.name, zone)
-
-        if op.action == "add":
-            # Prerequisite: RRset should not exist
-            cached_rrset = zone_cache.get_rrset(zone, op.name, rdtype, rdclass)
-            if cached_rrset is not None:
-                enrich_error_context(
-                    http_request,
-                    error_type="ConflictError",
-                    message=f"RRset {op.name} {rdclass} {rdtype} already exists",
-                    code="RRSET_EXISTS",
-                )
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail=f"Operation {i}: RRset {op.name} {rdclass} {rdtype} already exists",
-                )
-
-            update.absent(fqdn, rdtype_obj)
-            for record in op.records or []:
-                rdata = dns.rdata.from_text(rdclass_obj, rdtype_obj, record)
-                update.add(fqdn, op.ttl, rdata)
-
-            cache_updates.append(
-                {
-                    "action": "add",
-                    "name": op.name,
-                    "ttl": op.ttl,
-                    "rdtype": rdtype,
-                    "rdclass": rdclass,
-                    "records": op.records,
-                }
-            )
-
-        elif op.action == "delete":
-            # Prerequisite: RRset must exist
-            cached_rrset = zone_cache.get_rrset(zone, op.name, rdtype, rdclass)
-            if cached_rrset is None:
-                enrich_error_context(
-                    http_request,
-                    error_type="NotFoundError",
-                    message=f"RRset {op.name} {rdclass} {rdtype} not found",
-                    code="RRSET_NOT_FOUND",
-                )
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Operation {i}: RRset {op.name} {rdclass} {rdtype} not found",
-                )
-
-            # Add prerequisite
-            for record in cached_rrset.records:
-                update.present(fqdn, rdtype_obj, record)
-
-            # Delete specific records or entire RRset
-            if op.records:
-                for record in op.records:
-                    rdata = dns.rdata.from_text(rdclass_obj, rdtype_obj, record)
-                    update.delete(fqdn, rdata)
-            else:
-                update.delete(fqdn, rdtype_obj)
-
-            cache_updates.append(
-                {
-                    "action": "delete",
-                    "name": op.name,
-                    "rdtype": rdtype,
-                    "rdclass": rdclass,
-                    "records": op.records,
-                }
-            )
-
-        elif op.action == "replace":
-            # Prerequisite: RRset must exist
-            cached_rrset = zone_cache.get_rrset(zone, op.name, rdtype, rdclass)
-            if cached_rrset is None:
-                enrich_error_context(
-                    http_request,
-                    error_type="NotFoundError",
-                    message=f"RRset {op.name} {rdclass} {rdtype} not found",
-                    code="RRSET_NOT_FOUND",
-                )
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Operation {i}: RRset {op.name} {rdclass} {rdtype} not found (use add)",
-                )
-
-            # Add prerequisite
-            for record in cached_rrset.records:
-                update.present(fqdn, rdtype_obj, record)
-
-            # Delete existing and add new
-            update.delete(fqdn, rdtype_obj)
-            for record in op.records or []:
-                rdata = dns.rdata.from_text(rdclass_obj, rdtype_obj, record)
-                update.add(fqdn, op.ttl, rdata)
-
-            cache_updates.append(
-                {
-                    "action": "replace",
-                    "name": op.name,
-                    "ttl": op.ttl,
-                    "rdtype": rdtype,
-                    "rdclass": rdclass,
-                    "records": op.records,
-                }
-            )
+    try:
+        built = build_update(
+            zone,
+            request.operations,
+            dns_client,
+            zone_cache,
+            auto_prerequisites=True,
+            validate_cache_state=True,
+        )
+    except UpdateBuildError as e:
+        status_code = status.HTTP_400_BAD_REQUEST
+        if e.code == "RRSET_EXISTS":
+            status_code = status.HTTP_409_CONFLICT
+        elif e.code == "RRSET_NOT_FOUND":
+            status_code = status.HTTP_404_NOT_FOUND
+        enrich_error_context(
+            http_request,
+            error_type="UpdateBuildError",
+            message=e.message,
+            code=e.code,
+        )
+        raise HTTPException(status_code=status_code, detail=e.message)
 
     # Send the combined update
     try:
-        dns_client._send_update(update, zone)
+        dns_client._send_update(built.update, zone)
 
-        # Update cache for all successful operations
-        for cu in cache_updates:
-            if cu["action"] == "add":
-                zone_cache.update_cache_after_add(
-                    zone=zone,
-                    name=cu["name"],
-                    ttl=cu["ttl"],
-                    rdtype=cu["rdtype"],
-                    records=cu["records"],
-                    rdclass=cu["rdclass"],
-                )
+        apply_cache_updates(zone, built.cache_updates, zone_cache)
+        for cu in built.cache_updates:
+            if cu.action == "add":
                 rrset_adds_total.labels(zone=zone).inc()
-            elif cu["action"] == "delete":
-                zone_cache.update_cache_after_delete(
-                    zone=zone,
-                    name=cu["name"],
-                    rdtype=cu["rdtype"],
-                    records=cu["records"],
-                    rdclass=cu["rdclass"],
-                )
+            elif cu.action == "delete":
                 rrset_deletes_total.labels(zone=zone).inc()
-            elif cu["action"] == "replace":
-                zone_cache.update_cache_after_replace(
-                    zone=zone,
-                    name=cu["name"],
-                    ttl=cu["ttl"],
-                    rdtype=cu["rdtype"],
-                    records=cu["records"],
-                    rdclass=cu["rdclass"],
-                )
+            elif cu.action == "replace":
                 rrset_replaces_total.labels(zone=zone).inc()
 
         ddns_updates_successful.inc()

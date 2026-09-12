@@ -59,6 +59,159 @@ export interface AtomicResult {
   operations_count?: number;
 }
 
+// Scheduled change types
+export type ChangeStatus =
+  | 'draft'
+  | 'scheduled'
+  | 'running'
+  | 'applied'
+  | 'failed'
+  | 'cancelled'
+  | 'expired'
+  | 'reverted';
+
+export type PrereqType = 'nxdomain' | 'yxdomain' | 'nxrrset' | 'yxrrset';
+
+export interface ChangePrerequisite {
+  prereq_type: PrereqType;
+  name: string;
+  rdtype?: string | null;
+  rdclass?: string;
+  data?: string | null;
+}
+
+export interface ScheduledChangeEvent {
+  id: number;
+  change_id: string;
+  ts: string;
+  event: string;
+  actor: string | null;
+  detail: Record<string, unknown> | null;
+}
+
+/** Cross-change audit event (joined with change metadata). */
+export interface AuditEvent {
+  id: number;
+  ts: string;
+  event: string;
+  actor: string | null;
+  detail: Record<string, unknown> | null;
+  change_id: string;
+  change_name: string;
+  zone: string;
+  change_status: ChangeStatus;
+}
+
+export interface ScheduledChange {
+  id: string;
+  name: string;
+  description: string | null;
+  zone: string;
+  status: ChangeStatus;
+  scheduled_at: string | null;
+  not_valid_after: string | null;
+  auto_prerequisites: boolean;
+  created_at: string;
+  created_by: string | null;
+  updated_at: string;
+  attempts: number;
+  next_attempt_at: string | null;
+  last_error: string | null;
+  applied_at: string | null;
+  result_rcode: string | null;
+  new_serial: number | null;
+  reverted_at?: string | null;
+  operations: Array<{
+    action: 'add' | 'delete' | 'replace';
+    name: string;
+    type: string;
+    rdclass: string;
+    ttl: number;
+    records: string[] | null;
+    prior_ttl?: number | null;
+    prior_records?: string[] | null;
+    snapshot_at?: string | null;
+  }>;
+  prerequisites: ChangePrerequisite[];
+  events?: ScheduledChangeEvent[];
+}
+
+export interface RevertOperation {
+  action: 'add' | 'delete';
+  name: string;
+  type: string;
+  rdclass: string;
+  ttl: number;
+  records: string[] | null;
+}
+
+export interface RevertPreview {
+  change_id: string;
+  zone: string;
+  operations: RevertOperation[];
+  warning: string;
+  message: string;
+  can_revert: boolean;
+}
+
+export interface PrerequisitePreviewResult {
+  prereq_type: PrereqType;
+  name: string;
+  rdtype: string | null;
+  rdclass: string;
+  data: string | null;
+  passed: boolean;
+  message: string;
+  source: 'explicit' | 'auto';
+}
+
+export interface ConflictWarning {
+  other_change_id: string;
+  other_change_name: string;
+  name: string;
+  type: string;
+  rdclass: string;
+}
+
+export interface PreviewResult {
+  change_id: string;
+  zone: string;
+  prerequisites: PrerequisitePreviewResult[];
+  all_prerequisites_passed: boolean;
+  conflicts: ConflictWarning[];
+  operations_count: number;
+  message: string;
+}
+
+export interface ScheduleForm {
+  name: string;
+  description: string;
+  applyNow: boolean;
+  scheduledLocal: string;
+  expiryHours: number;
+  autoPrerequisites: boolean;
+}
+
+/** An operation being edited in the schedule modal (zone is held separately). */
+export interface ScheduleOp {
+  action: 'add' | 'delete' | 'replace';
+  name: string;
+  type: string;
+  rdclass: string;
+  ttl: number;
+  records: string[] | null;
+  /** Working copy of records for the form (one value per line). */
+  recordsText: string;
+}
+
+export interface PrereqRow {
+  prereq_type: PrereqType;
+  name: string;
+  rdtype: string;
+  rdclass: string;
+  data: string;
+}
+
 export interface NsupdateResult {
   total_success: number;
   total_failed: number;
@@ -283,11 +436,45 @@ export interface AppState {
   showNsupdate: boolean;
   showAtomicModal: boolean;
   showReversePtrModal: boolean;
+  showScheduleModal: boolean;
+  showScheduledView: boolean;
+  showAuditView: boolean;
 
   // Atomic mode
   atomicMode: boolean;
   atomicQueue: AtomicOperation[];
   atomicResult: AtomicResult | null;
+
+  // Scheduled changes
+  scheduledChanges: ScheduledChange[];
+  scheduledLoading: boolean;
+  scheduleForm: ScheduleForm;
+  scheduleMode: 'create' | 'edit';
+  editingChangeId: string | null;
+  scheduleOps: ScheduleOp[];
+  scheduleZone: string;
+  prereqRows: PrereqRow[];
+  previewResult: PreviewResult | null;
+  previewLoading: boolean;
+  selectedScheduledChange: ScheduledChange | null;
+  scheduledStatusFilters: ChangeStatus[];
+  showScheduledStatusMenu: boolean;
+  showRevertModal: boolean;
+  revertPreview: RevertPreview | null;
+
+  // Audit log (cross-change)
+  auditEvents: AuditEvent[];
+  auditLoading: boolean;
+  auditTotal: number;
+  auditLimit: number;
+  auditOffset: number;
+  auditEventFilters: string[];
+  showAuditEventMenu: boolean;
+  auditActorFilter: string;
+  auditZoneFilter: string;
+  auditQuery: string;
+  auditSince: string;
+  auditUntil: string;
 
   // Reverse PTR
   reversePtrTarget: string;
@@ -340,4 +527,5 @@ export interface RouteParams {
   searchType: string | null;
   searchField: SearchField;
   searchAllZones: boolean;
+  view: string | null;
 }

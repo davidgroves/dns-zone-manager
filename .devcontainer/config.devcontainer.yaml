@@ -63,6 +63,16 @@ notify:
   prefer_ixfr: true
   require_tsig: false
 
+# Scheduled Changes (SQLite intent store)
+scheduler:
+  enabled: true
+  database_path: .tmp/scheduler.db
+  poll_interval: 5
+  max_attempts: 3
+  retry_backoff: 30
+  lease_ttl: 120
+  default_expiry_window: 3600
+
 # Logging - use text format for local development (human-readable)
 logging:
   format: json

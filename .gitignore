@@ -6,6 +6,9 @@ __pycache__/
 # C extensions
 *.so
 
+# Core dumps
+core.*
+
 # hatch-vcs generated version file
 backend/src/dns_zone_manager/_version.py
 

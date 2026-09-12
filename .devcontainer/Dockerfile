@@ -16,8 +16,18 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-# Playwright browsers and system dependencies (cached layer)
-RUN npx playwright install --with-deps
+# Playwright browsers (Chromium, Firefox, WebKit) + OS dependencies.
+# Install into a shared path so the vscode user finds them without a second
+# download. iPad E2E projects use WebKit under the hood.
+# Pin the installer to the lockfile version so the image matches package-lock.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+COPY package.json package-lock.json /tmp/playwright-install/
+WORKDIR /tmp/playwright-install
+RUN npm ci --ignore-scripts \
+    && npx playwright install --with-deps \
+    && chmod -R a+rwX /ms-playwright \
+    && rm -rf /tmp/playwright-install /root/.npm
+WORKDIR /
 
 # Docker CLI (for viewing sibling container logs)
 RUN curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg \

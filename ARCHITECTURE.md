@@ -160,8 +160,22 @@ Benefits of treating DNS as the source of truth:
 | **No sync needed** | The API reads from and writes to the same place |
 | **Atomic updates** | DDNS updates are processed atomically by the DNS server |
 | **Standard protocols** | Works with any RFC-compliant DNS server |
-| **Operational simplicity** | No database to manage, back up, or scale |
+| **Operational simplicity** | No database to manage, back up, or scale for *zone state* |
 | **Direct queries work** | `dig` and other tools see the same data as the API |
+
+### Intent Versus State: Scheduled Changes
+
+Zone **state** (what records exist now) still lives only in DNS. Named, time-scheduled changes are **intent** (what to do later) — they have no representation in a zone until they execute. For that reason the scheduler persists intent in a local SQLite file:
+
+| Stored in SQLite | Still only in DNS |
+|------------------|-------------------|
+| Change name, schedule, expiry | Current RRsets |
+| Operations and prerequisites | Serial / SOA |
+| Audit trail of apply/fail | Authoritative answers |
+
+SQLite is never used as a dual source of truth for zone contents. After a change applies, the authoritative result is whatever the DNS server accepted via DDNS; the cache is refreshed from DNS as usual.
+
+Applied changes can later be **reverted** if a pre-apply snapshot was captured. At apply time the executor records prior RRset state (`prior_ttl` / `prior_records` / `snapshot_at`) for each operation. Revert builds inverse ADD/DELETE operations and sends them immediately; status becomes terminal `reverted`. Changes applied before snapshot support (missing `snapshot_at`) cannot be reverted.
 
 ### The Cache is Not a Source of Truth
 
@@ -340,6 +354,10 @@ sequenceDiagram
         API-->>Client: 409 Conflict (no operations applied)
     end
 ```
+
+The same builder is used for **scheduled changes** (`POST /v1/scheduled-changes`). A named change can be applied immediately or when a background scheduler claims it after `scheduled_at`. Explicit DNS prerequisites (NXDOMAIN / YXDOMAIN / NXRRSET / YXRRSET) and auto-derived prerequisites are attached to the same UPDATE message so the check and write stay atomic.
+
+Statuses include `draft`, `scheduled`, `running`, `applied`, `failed`, `cancelled`, `expired`, and `reverted`. `POST /v1/scheduled-changes/{id}/revert` undoes an `applied` change using snapshots taken at apply time; `GET .../revert-preview` shows the inverse operations and a warning that only that change is undone.
 
 ## Consistency Model
 

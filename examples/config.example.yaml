@@ -181,6 +181,33 @@ catalog:
   remove_stale_zones: false
 
 # =============================================================================
+# Scheduled Changes (SQLite intent store)
+# =============================================================================
+# Stores named, optionally timed DNS changes. SQLite holds only intent
+# (what to do, when) — never zone state. DNS remains the sole source of truth.
+scheduler:
+  # Enable the scheduled-change store and background runner
+  enabled: true
+
+  # Path to the SQLite database file
+  database_path: /var/lib/dns-zone-manager/scheduler.db
+
+  # Seconds between scheduler poll ticks
+  poll_interval: 10
+
+  # Maximum execution attempts before leaving a change as failed
+  max_attempts: 3
+
+  # Base retry backoff in seconds (multiplied by attempt number)
+  retry_backoff: 60
+
+  # Seconds a claimed change stays locked to a worker
+  lease_ttl: 120
+
+  # Default seconds after scheduled_at before a change expires
+  default_expiry_window: 3600
+
+# =============================================================================
 # Logging Configuration
 # =============================================================================
 logging:

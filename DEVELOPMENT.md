@@ -71,6 +71,25 @@ In Docker, the frontend is served by nginx which proxies API requests to FastAPI
 - `vite.config.ts` — Vite bundler config
 - `package.json` — npm scripts and dependencies
 
+### Scheduled changes (SQLite)
+
+The scheduler stores named/timed change *intent* in SQLite (never zone state). In the
+devcontainer this defaults to `.tmp/scheduler.db` (see
+`.devcontainer/config.devcontainer.yaml`). For production, set
+`scheduler.database_path` to a durable volume and include that file in backups.
+
+```yaml
+scheduler:
+  enabled: true
+  database_path: /var/lib/dns-zone-manager/scheduler.db
+```
+
+API: `POST/GET/PATCH/DELETE /v1/scheduled-changes`, plus `/apply`, `/preview`,
+`/revert-preview`, and `/revert`. Applied changes with pre-apply snapshots can be
+reverted immediately (status becomes `reverted`).
+From the UI: enable Atomic mode, queue changes, then **Save as Change**, or open
+the **Scheduled** view to preview / apply / cancel / revert.
+
 ## Docker Compose (Production Testing)
 
 The `examples/` directory contains a Docker Compose configuration for testing production builds:
@@ -109,11 +128,20 @@ npm run test:coverage     # With coverage
 
 ### E2E Tests (Playwright)
 
+E2E projects cover Chromium, Firefox, WebKit (Desktop Safari), and an iPad
+viewport (also WebKit). Browsers and their OS dependencies are installed in
+the image; `postCreateCommand` runs `npx playwright install --with-deps` so a
+rebuild or Playwright version bump picks up any missing browser.
+
 ```bash
 npm run test:e2e          # Run E2E tests
 npm run test:e2e:ui       # Playwright UI at http://localhost:9323
 npm run test:e2e:headed   # Run with visible browser
 npm run test:e2e:report   # View test report at http://localhost:9324
+
+# Single browser / device project
+npx playwright test --project=webkit
+npx playwright test --project=ipad
 ```
 
 ## Dependency Updates (Renovate)

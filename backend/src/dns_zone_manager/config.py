@@ -330,6 +330,45 @@ class NotifySettings(BaseSettings):
     )
 
 
+class SchedulerSettings(BaseSettings):
+    """Scheduled DNS change persistence and execution settings.
+
+    SQLite stores only intent (what to do, when) — never zone state.
+    DNS remains the sole source of truth for what a zone contains.
+    """
+
+    model_config = SettingsConfigDict(env_prefix="SCHEDULER_")
+
+    enabled: bool = Field(
+        default=True,
+        description="Enable the scheduled-change store and background runner",
+    )
+    database_path: str = Field(
+        default="scheduler.db",
+        description="Path to the SQLite database file for scheduled changes",
+    )
+    poll_interval: float = Field(
+        default=10.0,
+        description="Seconds between scheduler poll ticks",
+    )
+    max_attempts: int = Field(
+        default=3,
+        description="Maximum execution attempts before leaving a change as failed",
+    )
+    retry_backoff: int = Field(
+        default=60,
+        description="Base retry backoff in seconds (multiplied by attempt number)",
+    )
+    lease_ttl: int = Field(
+        default=120,
+        description="Seconds a claimed change stays locked to a worker",
+    )
+    default_expiry_window: int = Field(
+        default=3600,
+        description="Default seconds after scheduled_at before a change expires",
+    )
+
+
 class Settings(BaseSettings):
     """Main application settings."""
 
@@ -366,6 +405,9 @@ class Settings(BaseSettings):
 
     # NOTIFY listener settings
     notify: NotifySettings = Field(default_factory=NotifySettings)
+
+    # Scheduled change settings
+    scheduler: SchedulerSettings = Field(default_factory=SchedulerSettings)
 
     # Logging settings
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
@@ -478,6 +520,7 @@ class Settings(BaseSettings):
             cache=from_yaml(CacheSettings, yaml_config.get("cache")),
             catalog=from_yaml(CatalogZoneSettings, yaml_config.get("catalog")),
             notify=from_yaml(NotifySettings, yaml_config.get("notify")),
+            scheduler=from_yaml(SchedulerSettings, yaml_config.get("scheduler")),
             logging=from_yaml(LoggingSettings, yaml_config.get("logging")),
         )
 

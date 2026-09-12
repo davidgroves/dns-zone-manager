@@ -253,6 +253,8 @@ export function createZoneMethods(_state: AppState) {
      */
     async selectZone(this: ZoneMethodContext, zone: string) {
       this.selectedZone = zone;
+      this.showScheduledView = false;
+      this.showAuditView = false;
       this.clearSearch();
       await this.loadRecords();
       // Update URL to reflect selected zone

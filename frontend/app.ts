@@ -1,11 +1,13 @@
 import { formatDNSError } from './api/client';
 import { createAtomicMethods } from './modules/atomic';
+import { createAuditMethods } from './modules/audit';
 import { createAuthMethods } from './modules/auth';
 import { createHistoryMethods } from './modules/history';
 import { createNsupdateMethods } from './modules/nsupdate';
 import { createRecordMethods } from './modules/records';
 import { createReverseMethods } from './modules/reverse';
 import { createRouterMethods, parseUrlParams } from './modules/router';
+import { createScheduledMethods } from './modules/scheduled';
 import { createSearchMethods } from './modules/search';
 import { createSortingMethods } from './modules/sorting';
 import { createToastMethods } from './modules/toast';
@@ -84,6 +86,8 @@ export function createApp(config: AppConfig) {
   const nsupdateMethods = createNsupdateMethods(state);
   const reverseMethods = createReverseMethods(state);
   const historyMethods = createHistoryMethods(state);
+  const scheduledMethods = createScheduledMethods(state);
+  const auditMethods = createAuditMethods(state);
   const routerMethods = createRouterMethods(state);
 
   // Assign methods directly to state object so Alpine.js reactive updates work
@@ -98,6 +102,8 @@ export function createApp(config: AppConfig) {
   Object.assign(state, nsupdateMethods);
   Object.assign(state, reverseMethods);
   Object.assign(state, historyMethods);
+  Object.assign(state, scheduledMethods);
+  Object.assign(state, auditMethods);
   Object.assign(state, routerMethods);
 
   // Add constants and utilities to state

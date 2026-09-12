@@ -43,9 +43,12 @@ from dns_zone_manager.routers import (
     nsupdate,
     reverse,
     rrsets,
+    scheduled,
     search,
     zones,
 )
+from dns_zone_manager.scheduler.runner import run_scheduler_loop
+from dns_zone_manager.scheduler.store import ScheduledChangeStore
 
 # Get settings early for logging configuration
 _settings = get_settings()
@@ -60,6 +63,7 @@ dns_client: DNSClient | None = None
 zone_cache: ZoneCache | None = None
 catalog_indexer: Any = None  # CatZoneIndex | None when catalog_zone_indexer is available
 notify_listener: NotifyListener | None = None
+scheduled_store: ScheduledChangeStore | None = None
 
 
 async def _sync_catalog_zones() -> None:
@@ -257,7 +261,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     Initializes DNS client and zone cache on startup,
     cleans up on shutdown.
     """
-    global dns_client, zone_cache, catalog_indexer, notify_listener
+    global dns_client, zone_cache, catalog_indexer, notify_listener, scheduled_store
 
     settings = get_settings()
 
@@ -274,6 +278,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         catalog_enabled=settings.catalog.enabled,
         notify_enabled=settings.notify.enabled,
         notify_prefer_ixfr=settings.notify.prefer_ixfr,
+        scheduler_enabled=settings.scheduler.enabled,
         log_format=settings.logging.format,
         log_level=settings.logging.level,
     )
@@ -308,6 +313,31 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     atomic.set_zone_cache(zone_cache)
     history.set_dns_client(dns_client)
     history.set_zone_cache(zone_cache)
+
+    # Initialize scheduled change store and runner
+    scheduler_task: asyncio.Task[None] | None = None
+    if settings.scheduler.enabled:
+        scheduled_store = ScheduledChangeStore(
+            database_path=settings.scheduler.database_path,
+            default_expiry_window=settings.scheduler.default_expiry_window,
+        )
+        await scheduled_store.open()
+        scheduled.set_dns_client(dns_client)
+        scheduled.set_zone_cache(zone_cache)
+        scheduled.set_store(scheduled_store)
+        scheduler_task = asyncio.create_task(
+            run_scheduler_loop(
+                scheduled_store,
+                dns_client,
+                zone_cache,
+                settings.scheduler,
+            )
+        )
+        log_internal_event(
+            "scheduler_store_initialized",
+            logger,
+            database_path=settings.scheduler.database_path,
+        )
 
     # Initialize NOTIFY listener if enabled
     if settings.notify.enabled:
@@ -454,6 +484,19 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         except asyncio.CancelledError:
             pass
 
+    # Stop scheduler task
+    if scheduler_task:
+        scheduler_task.cancel()
+        try:
+            await scheduler_task
+        except asyncio.CancelledError:
+            pass
+
+    # Close scheduled change store
+    if scheduled_store:
+        await scheduled_store.close()
+        log_internal_event("scheduler_store_closed", logger)
+
     # Stop sync task
     if sync_task:
         sync_task.cancel()
@@ -541,6 +584,7 @@ At least one authentication method must be configured and used.
     app.include_router(auth.router, prefix="/v1")
     app.include_router(reverse.router, prefix="/v1")
     app.include_router(history.router, prefix="/v1")
+    app.include_router(scheduled.router, prefix="/v1")
 
     # Exception handlers
     @app.exception_handler(DNSClientError)

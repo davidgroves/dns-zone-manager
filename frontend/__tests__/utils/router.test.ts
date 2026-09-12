@@ -13,6 +13,7 @@ describe('URL_PARAMS', () => {
     expect(URL_PARAMS.type).toBe('type');
     expect(URL_PARAMS.field).toBe('field');
     expect(URL_PARAMS.allZones).toBe('all');
+    expect(URL_PARAMS.view).toBe('view');
   });
 });
 
@@ -27,6 +28,7 @@ describe('parseSearchString', () => {
       searchType: null,
       searchField: 'either',
       searchAllZones: false,
+      view: null,
     });
   });
 
@@ -120,6 +122,7 @@ describe('parseSearchString', () => {
       searchType: 'A',
       searchField: 'name',
       searchAllZones: false,
+      view: null,
     });
   });
 
@@ -133,6 +136,7 @@ describe('parseSearchString', () => {
       searchType: 'MX',
       searchField: 'data',
       searchAllZones: true,
+      view: null,
     });
   });
 
@@ -148,6 +152,16 @@ describe('parseSearchString', () => {
 
     expect(params.zone).toBe('sub.example.com.');
   });
+
+  it('should parse scheduled view', () => {
+    const params = parseSearchString('?view=scheduled');
+    expect(params.view).toBe('scheduled');
+  });
+
+  it('should parse audit view', () => {
+    const params = parseSearchString('?view=audit');
+    expect(params.view).toBe('audit');
+  });
 });
 
 describe('buildQueryString', () => {
@@ -155,6 +169,11 @@ describe('buildQueryString', () => {
     const url = buildQueryString({});
 
     expect(url).toBe('');
+  });
+
+  it('should include audit view', () => {
+    const url = buildQueryString({ view: 'audit' });
+    expect(url).toBe('?view=audit');
   });
 
   it('should build query string with zone', () => {

@@ -68,6 +68,16 @@ notify:
   # Falls back to dns.update_tsig_key if not specified
   # tsig_key: notify-key
 
+# Scheduled changes (SQLite intent store)
+scheduler:
+  enabled: true
+  database_path: /data/scheduler.db
+  poll_interval: 10
+  max_attempts: 3
+  retry_backoff: 60
+  lease_ttl: 120
+  default_expiry_window: 3600
+
 # Logging - JSON for production/Docker
 logging:
   format: json

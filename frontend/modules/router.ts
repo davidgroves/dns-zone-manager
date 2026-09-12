@@ -10,6 +10,7 @@ export const URL_PARAMS = {
   type: 'type',
   field: 'field',
   allZones: 'all',
+  view: 'view',
 } as const;
 
 /**
@@ -25,6 +26,7 @@ export function parseSearchString(searchString: string): RouteParams {
   const type = params.get(URL_PARAMS.type);
   const field = params.get(URL_PARAMS.field) as SearchField | null;
   const allZones = params.get(URL_PARAMS.allZones) === 'true';
+  const view = params.get(URL_PARAMS.view);
 
   const page = pageStr ? Number.parseInt(pageStr, 10) : 1;
 
@@ -35,6 +37,7 @@ export function parseSearchString(searchString: string): RouteParams {
     searchType: type || null,
     searchField: field || 'either',
     searchAllZones: allZones,
+    view: view || null,
   };
 }
 
@@ -75,6 +78,10 @@ export function buildQueryString(params: Partial<RouteParams>): string {
 
   if (params.searchAllZones) {
     urlParams.set(URL_PARAMS.allZones, 'true');
+  }
+
+  if (params.view) {
+    urlParams.set(URL_PARAMS.view, params.view);
   }
 
   const queryString = urlParams.toString();
@@ -121,6 +128,11 @@ export function getRouteParamsFromState(state: AppState): RouteParams {
     searchType: state.searchType || null,
     searchField: state.searchField,
     searchAllZones: state.searchAllZones,
+    view: state.showAuditView
+      ? 'audit'
+      : state.showScheduledView
+        ? 'scheduled'
+        : null,
   };
 }
 
@@ -145,6 +157,8 @@ type RouterMethodContext = AppState & {
   goToSearchPage: (page: number) => Promise<void>;
   clearSearch: () => void;
   toast: (message: string, type?: 'success' | 'error' | 'warning') => void;
+  openScheduledView: () => void;
+  openAuditView: () => void;
 };
 
 /**
@@ -157,6 +171,22 @@ export function createRouterMethods(_state: AppState) {
      * Called after authentication to restore the intended destination.
      */
     async navigateToRoute(this: RouterMethodContext, route: RouteParams) {
+      if (route.view === 'scheduled') {
+        await this.loadZones();
+        this.openScheduledView();
+        this.intendedRoute = null;
+        syncUrlFromState(this);
+        return;
+      }
+
+      if (route.view === 'audit') {
+        await this.loadZones();
+        this.openAuditView();
+        this.intendedRoute = null;
+        syncUrlFromState(this);
+        return;
+      }
+
       // If there's a search query, set up search state
       if (route.searchQuery || route.searchType) {
         this.searchQuery = route.searchQuery || '';

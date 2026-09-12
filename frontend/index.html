@@ -236,6 +236,25 @@
                             </svg>
                             NSUPDATE
                         </button>
+
+                        <button @click="openScheduledView()" class="btn btn-ghost" title="Scheduled Changes"
+                                :class="{ 'active': showScheduledView }">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"/>
+                                <path d="M12 6v6l4 2"/>
+                            </svg>
+                            Scheduled
+                        </button>
+
+                        <button @click="openAuditView()" class="btn btn-ghost" title="Audit Logs"
+                                :class="{ 'active': showAuditView }">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                <path d="M14 2v6h6"/>
+                                <path d="M16 13H8M16 17H8M10 9H8"/>
+                            </svg>
+                            Audit
+                        </button>
                         
                         <button @click="atomicMode = !atomicMode; onAtomicModeChange()" 
                                 class="btn btn-ghost atomic-toggle" 
@@ -262,8 +281,342 @@
 
                 <!-- Content -->
                 <div class="content">
+                    <!-- Scheduled Changes View -->
+                    <template x-if="showScheduledView">
+                        <div class="card">
+                            <div class="card-header">
+                                <h2>Scheduled Changes</h2>
+                                <div class="header-actions">
+                                    <div class="status-filter" @click.outside="showScheduledStatusMenu = false">
+                                        <button type="button"
+                                                class="status-filter-toggle"
+                                                @click="showScheduledStatusMenu = !showScheduledStatusMenu"
+                                                :aria-expanded="showScheduledStatusMenu"
+                                                aria-haspopup="listbox">
+                                            <span class="status-filter-label" x-text="scheduledStatusFilterLabel()"></span>
+                                            <svg class="status-filter-chevron" viewBox="0 0 24 24" fill="none"
+                                                 stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                                <path d="M6 9l6 6 6-6"/>
+                                            </svg>
+                                        </button>
+                                        <div class="status-filter-menu" x-show="showScheduledStatusMenu" x-cloak>
+                                            <button type="button" class="status-filter-action"
+                                                    @click="selectAllScheduledStatuses()">All statuses</button>
+                                            <button type="button" class="status-filter-action"
+                                                    @click="resetScheduledStatusFilters()">Active only</button>
+                                            <div class="status-filter-divider"></div>
+                                            <template x-for="status in allChangeStatuses()" :key="status">
+                                                <label class="form-check status-filter-option">
+                                                    <input type="checkbox"
+                                                           :checked="isScheduledStatusSelected(status)"
+                                                           @change="toggleScheduledStatus(status)">
+                                                    <span x-text="statusLabel(status)"></span>
+                                                </label>
+                                            </template>
+                                        </div>
+                                    </div>
+                                    <button @click="loadScheduledChanges()" class="btn btn-ghost btn-sm" :disabled="scheduledLoading">Refresh</button>
+                                    <button @click="closeScheduledView()" class="btn btn-ghost btn-sm">Close</button>
+                                </div>
+                            </div>
+                            <div class="card-body scheduled-view-body">
+                                <template x-if="scheduledLoading">
+                                    <div class="loading"><div class="spinner"></div></div>
+                                </template>
+                                <template x-if="!scheduledLoading && scheduledChanges.length === 0">
+                                    <div class="empty-state" style="padding: 2rem;">
+                                        <p class="text-muted">No scheduled changes. Queue operations in Atomic mode and use "Save as Change".</p>
+                                    </div>
+                                </template>
+
+                                <template x-if="selectedScheduledChange">
+                                    <div id="scheduled-change-detail" class="card scheduled-detail mb-2" style="background: var(--bg-tertiary); flex: 0 0 auto;">
+                                        <div class="card-header">
+                                            <h3 x-text="selectedScheduledChange.name"></h3>
+                                            <button @click="selectedScheduledChange = null" class="btn btn-ghost btn-sm">×</button>
+                                        </div>
+                                        <div class="card-body">
+                                            <p>
+                                                <span class="status-badge" :class="statusBadgeClass(selectedScheduledChange.status)" x-text="selectedScheduledChange.status"></span>
+                                                <span class="text-muted" x-text="' · ' + selectedScheduledChange.zone"></span>
+                                                <span class="text-muted text-sm" x-show="selectedScheduledChange.applied_at"
+                                                      x-text="' · applied ' + formatScheduledDisplay(selectedScheduledChange.applied_at)"></span>
+                                                <span class="text-muted text-sm" x-show="selectedScheduledChange.reverted_at"
+                                                      x-text="' · reverted ' + formatScheduledDisplay(selectedScheduledChange.reverted_at)"></span>
+                                                <span class="text-muted text-sm" x-show="selectedScheduledChange.result_rcode"
+                                                      x-text="' · ' + selectedScheduledChange.result_rcode"></span>
+                                                <span class="text-muted text-sm" x-show="selectedScheduledChange.new_serial"
+                                                      x-text="' · serial ' + selectedScheduledChange.new_serial"></span>
+                                            </p>
+                                            <p class="text-sm" x-show="selectedScheduledChange.last_error">
+                                                <strong>Error:</strong> <span x-text="selectedScheduledChange.last_error"></span>
+                                            </p>
+                                            <h4>Operations</h4>
+                                            <ul class="scheduled-op-list">
+                                                <template x-for="(op, i) in selectedScheduledChange.operations" :key="i">
+                                                    <li>
+                                                        <span class="atomic-queue-action" :class="op.action" x-text="op.action.toUpperCase()"></span>
+                                                        <strong x-text="op.name"></strong>
+                                                        <span class="record-type" :class="op.type" x-text="op.type"></span>
+                                                        <span class="text-muted" x-show="op.ttl != null" x-text="'TTL ' + op.ttl"></span>
+                                                        <span class="text-muted" x-show="op.records" x-text="op.records ? op.records.join(', ') : ''"></span>
+                                                    </li>
+                                                </template>
+                                            </ul>
+                                            <template x-if="selectedScheduledChange.prerequisites && selectedScheduledChange.prerequisites.length > 0">
+                                                <div>
+                                                    <h4>Prerequisites</h4>
+                                                    <ul>
+                                                        <template x-for="(p, i) in selectedScheduledChange.prerequisites" :key="i">
+                                                            <li x-text="p.prereq_type + ' ' + p.name + (p.rdtype ? ' ' + p.rdtype : '') + (p.data ? ' ' + p.data : '')"></li>
+                                                        </template>
+                                                    </ul>
+                                                </div>
+                                            </template>
+                                            <template x-if="previewResult && previewResult.change_id === selectedScheduledChange.id">
+                                                <div class="mt-2 scheduled-preview">
+                                                    <div class="form-group-header">
+                                                        <h4>Preview</h4>
+                                                        <button type="button"
+                                                                class="btn btn-ghost btn-sm"
+                                                                x-show="isChangeEditable(selectedScheduledChange.status)"
+                                                                @click="previewScheduledChange(selectedScheduledChange.id)"
+                                                                :disabled="previewLoading">
+                                                            Refresh preview
+                                                        </button>
+                                                    </div>
+                                                    <p x-text="previewResult.message"></p>
+                                                    <ul>
+                                                        <template x-for="(pr, i) in previewResult.prerequisites" :key="i">
+                                                            <li :class="pr.passed ? 'text-success' : 'text-danger'" x-text="(pr.passed ? '✓ ' : '✗ ') + pr.message"></li>
+                                                        </template>
+                                                    </ul>
+                                                    <template x-if="previewResult.conflicts.length > 0">
+                                                        <div>
+                                                            <h4>Conflicts</h4>
+                                                            <ul class="scheduled-conflict-list">
+                                                                <template x-for="(c, i) in previewResult.conflicts" :key="i">
+                                                                    <li>
+                                                                        <button type="button"
+                                                                                class="scheduled-conflict-link"
+                                                                                @click="viewScheduledChange(c.other_change_id)"
+                                                                                :title="'View ' + c.other_change_name">
+                                                                            <span x-text="c.other_change_name"></span>
+                                                                        </button>
+                                                                        <span class="text-muted"
+                                                                              x-text="' also touches ' + c.name + ' ' + c.type"></span>
+                                                                    </li>
+                                                                </template>
+                                                            </ul>
+                                                        </div>
+                                                    </template>
+                                                </div>
+                                            </template>
+                                            <p class="text-muted text-sm mt-2"
+                                               x-show="previewLoading && isChangeEditable(selectedScheduledChange.status) && !(previewResult && previewResult.change_id === selectedScheduledChange.id)">
+                                                Checking prerequisites…
+                                            </p>
+                                            <template x-if="selectedScheduledChange.events && selectedScheduledChange.events.length">
+                                                <div class="mt-2">
+                                                    <h4>Audit trail</h4>
+                                                    <ul class="text-sm">
+                                                        <template x-for="ev in selectedScheduledChange.events" :key="ev.id">
+                                                            <li>
+                                                                <span x-text="formatScheduledDisplay(ev.ts)"></span>
+                                                                — <strong x-text="ev.event"></strong>
+                                                                <span class="text-muted" x-show="ev.actor" x-text="' by ' + ev.actor"></span>
+                                                                <span class="text-muted" x-show="formatAuditDetail(ev)"
+                                                                      x-text="' — ' + formatAuditDetail(ev)"></span>
+                                                            </li>
+                                                        </template>
+                                                    </ul>
+                                                </div>
+                                            </template>
+                                            <div class="mt-2" x-show="canRevertChange(selectedScheduledChange)">
+                                                <button @click="openRevertModal(selectedScheduledChange.id)"
+                                                        class="btn btn-warning btn-sm"
+                                                        :disabled="saving">Revert</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </template>
+
+                                <template x-if="!scheduledLoading && scheduledChanges.length > 0">
+                                  <div class="scheduled-table-wrap">
+                                    <table class="scheduled-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Name</th>
+                                                <th>Zone</th>
+                                                <th>Status</th>
+                                                <th>Scheduled</th>
+                                                <th>Ops</th>
+                                                <th></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <template x-for="chg in scheduledChanges" :key="chg.id">
+                                                <tr :class="{ 'scheduled-row-selected': selectedScheduledChange && selectedScheduledChange.id === chg.id }">
+                                                    <td>
+                                                        <strong x-text="chg.name"></strong>
+                                                        <div class="text-muted text-sm" x-show="chg.description" x-text="chg.description"></div>
+                                                    </td>
+                                                    <td x-text="chg.zone.replace(/\.$/, '')"></td>
+                                                    <td><span class="status-badge" :class="statusBadgeClass(chg.status)" x-text="chg.status"></span></td>
+                                                    <td class="text-sm" x-text="formatScheduledDisplay(chg.scheduled_at)"></td>
+                                                    <td x-text="chg.operations.length"></td>
+                                                    <td class="scheduled-actions">
+                                                        <span class="scheduled-primary-action">
+                                                            <template x-if="isChangeEditable(chg.status)">
+                                                                <button @click="applyScheduledChangeNow(chg.id)" class="btn btn-success btn-sm"
+                                                                        :disabled="saving">Apply Now</button>
+                                                            </template>
+                                                            <template x-if="canRevertChange(chg)">
+                                                                <button @click="openRevertModal(chg.id)" class="btn btn-warning btn-sm"
+                                                                        :disabled="saving">Revert</button>
+                                                            </template>
+                                                        </span>
+                                                        <button @click="viewScheduledChange(chg.id)" class="btn btn-ghost btn-sm">View</button>
+                                                        <button @click="editScheduledChange(chg.id)"
+                                                                class="btn btn-ghost btn-sm btn-icon btn-action-edit" title="Edit"
+                                                                :disabled="!isChangeEditable(chg.status)">
+                                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                                                            </svg>
+                                                        </button>
+                                                        <button @click="cancelScheduledChange(chg.id)"
+                                                                class="btn btn-ghost btn-sm btn-icon btn-action-delete" title="Cancel change"
+                                                                :disabled="!isChangeEditable(chg.status)">
+                                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                                <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                                            </svg>
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            </template>
+                                        </tbody>
+                                    </table>
+                                  </div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+
+                    <!-- Audit Logs View -->
+                    <template x-if="showAuditView">
+                        <div class="card">
+                            <div class="card-header">
+                                <h2>Audit Logs</h2>
+                                <div class="header-actions">
+                                    <button @click="loadAuditEvents()" class="btn btn-ghost btn-sm" :disabled="auditLoading">Refresh</button>
+                                    <button @click="closeAuditView()" class="btn btn-ghost btn-sm">Close</button>
+                                </div>
+                            </div>
+                            <div class="card-body scheduled-view-body">
+                                <div class="audit-filters mb-2">
+                                    <div class="status-filter" @click.outside="showAuditEventMenu = false">
+                                        <button type="button"
+                                                class="status-filter-toggle"
+                                                @click="showAuditEventMenu = !showAuditEventMenu"
+                                                :aria-expanded="showAuditEventMenu"
+                                                aria-haspopup="listbox">
+                                            <span class="status-filter-label" x-text="auditEventFilterLabel()"></span>
+                                            <svg class="status-filter-chevron" viewBox="0 0 24 24" fill="none"
+                                                 stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                                <path d="M6 9l6 6 6-6"/>
+                                            </svg>
+                                        </button>
+                                        <div class="status-filter-menu" x-show="showAuditEventMenu" x-cloak>
+                                            <button type="button" class="status-filter-action"
+                                                    @click="selectAllAuditEventFilters()">All events</button>
+                                            <button type="button" class="status-filter-action"
+                                                    @click="clearAuditEventFilters()">Clear</button>
+                                            <div class="status-filter-divider"></div>
+                                            <template x-for="evType in allAuditEventTypes()" :key="evType">
+                                                <label class="form-check status-filter-option">
+                                                    <input type="checkbox"
+                                                           :checked="isAuditEventSelected(evType)"
+                                                           @change="toggleAuditEventFilter(evType)">
+                                                    <span x-text="evType"></span>
+                                                </label>
+                                            </template>
+                                        </div>
+                                    </div>
+                                    <input type="text" class="form-input" placeholder="Actor"
+                                           x-model="auditActorFilter"
+                                           @keydown.enter="auditOffset = 0; loadAuditEvents()">
+                                    <input type="text" class="form-input" placeholder="Zone"
+                                           x-model="auditZoneFilter"
+                                           @keydown.enter="auditOffset = 0; loadAuditEvents()">
+                                    <input type="text" class="form-input" placeholder="Search…"
+                                           x-model="auditQuery"
+                                           @keydown.enter="auditOffset = 0; loadAuditEvents()">
+                                    <input type="datetime-local" class="form-input" title="Since"
+                                           x-model="auditSince"
+                                           @change="auditOffset = 0; loadAuditEvents()">
+                                    <input type="datetime-local" class="form-input" title="Until"
+                                           x-model="auditUntil"
+                                           @change="auditOffset = 0; loadAuditEvents()">
+                                    <button type="button" class="btn btn-ghost btn-sm"
+                                            @click="auditOffset = 0; loadAuditEvents()">Search</button>
+                                </div>
+
+                                <div class="pagination-bar audit-pagination mb-2" x-show="!auditLoading">
+                                    <button class="btn btn-ghost btn-sm" @click="auditPrevPage()"
+                                            :disabled="auditOffset <= 0">Previous</button>
+                                    <span id="audit-result-summary" class="text-muted text-sm"
+                                          x-text="auditResultSummary()"></span>
+                                    <button class="btn btn-ghost btn-sm" @click="auditNextPage()"
+                                            :disabled="auditOffset + auditLimit >= auditTotal">Next</button>
+                                </div>
+
+                                <template x-if="auditLoading">
+                                    <div class="loading"><div class="spinner"></div></div>
+                                </template>
+                                <template x-if="!auditLoading && auditEvents.length === 0">
+                                    <div class="empty-state" style="padding: 2rem;">
+                                        <p class="text-muted">No audit events match the current filters.</p>
+                                    </div>
+                                </template>
+                                <template x-if="!auditLoading && auditEvents.length > 0">
+                                    <div class="scheduled-table-wrap audit-table-wrap">
+                                        <table class="scheduled-table" id="audit-events-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Time</th>
+                                                    <th>Event</th>
+                                                    <th>Change</th>
+                                                    <th>Zone</th>
+                                                    <th>Actor</th>
+                                                    <th>Detail</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <template x-for="ev in auditEvents" :key="ev.id">
+                                                    <tr>
+                                                        <td class="text-sm" x-text="formatLocalDisplay(ev.ts)"></td>
+                                                        <td><strong x-text="ev.event"></strong></td>
+                                                        <td>
+                                                            <button type="button" class="btn-link"
+                                                                    @click="openChangeFromAudit(ev.change_id)"
+                                                                    x-text="ev.change_name"></button>
+                                                        </td>
+                                                        <td x-text="(ev.zone || '').replace(/\.$/, '')"></td>
+                                                        <td class="text-sm" x-text="ev.actor || '—'"></td>
+                                                        <td class="text-sm text-muted" x-text="formatAuditDetail(ev) || '—'"></td>
+                                                    </tr>
+                                                </template>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+
                     <!-- No Zone Selected -->
-                    <template x-if="!selectedZone && !isSearching">
+                    <template x-if="!selectedZone && !isSearching && !showScheduledView && !showAuditView">
                         <div class="empty-state">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                                 <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
@@ -443,7 +796,7 @@
                     </template>
 
                     <!-- Zone Records -->
-                    <template x-if="selectedZone && !isSearching">
+                    <template x-if="selectedZone && !isSearching && !showScheduledView && !showAuditView">
                         <div class="card">
                             <div class="card-header">
                                 <h2>
@@ -903,9 +1256,9 @@ send"></textarea>
                                             <span x-text="op.records ? op.records.join(', ') : ''"></span>
                                         </div>
                                     </div>
-                                    <button @click="removeAtomicItem(index)" class="btn btn-ghost btn-sm btn-icon" title="Remove">
-                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-                                            <path d="M18 6L6 18M6 6l12 12"/>
+                                    <button @click="removeAtomicItem(index)" class="btn btn-ghost btn-sm btn-icon btn-action-delete" title="Remove">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
                                         </svg>
                                     </button>
                                 </div>
@@ -924,9 +1277,185 @@ send"></textarea>
                     <button @click="clearAtomicQueue()" class="btn btn-ghost" :disabled="atomicQueue.length === 0">
                         Clear All
                     </button>
+                    <button @click="openScheduleFromQueue()" class="btn btn-ghost" :disabled="atomicQueue.length === 0 || saving">
+                        Save as Change
+                    </button>
                     <button @click="submitAtomicQueue()" class="btn btn-success" :disabled="atomicQueue.length === 0 || saving">
                         <span x-show="saving" class="spinner" style="width: 14px; height: 14px;"></span>
-                        Submit All
+                        Apply Now
+                    </button>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <!-- Revert Scheduled Change Modal -->
+    <template x-if="showRevertModal && revertPreview">
+        <div class="modal-backdrop" @click.self="closeRevertModal()">
+            <div class="modal" style="max-width: 560px;">
+                <div class="modal-header">
+                    <h3>Revert scheduled change</h3>
+                    <button @click="closeRevertModal()" class="btn btn-ghost btn-icon btn-sm">×</button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-sm text-muted" x-text="revertPreview.message"></p>
+                    <h4>Operations to perform</h4>
+                    <ul class="scheduled-op-list">
+                        <template x-for="(op, i) in revertPreview.operations" :key="i">
+                            <li>
+                                <span class="atomic-queue-action" :class="op.action" x-text="op.action.toUpperCase()"></span>
+                                <strong x-text="op.name"></strong>
+                                <span class="record-type" :class="op.type" x-text="op.type"></span>
+                                <span class="text-muted" x-show="op.ttl != null" x-text="'TTL ' + op.ttl"></span>
+                                <span class="text-muted" x-show="op.records" x-text="op.records ? op.records.join(', ') : ''"></span>
+                            </li>
+                        </template>
+                    </ul>
+                    <div class="revert-warning" x-text="revertPreview.warning"></div>
+                </div>
+                <div class="modal-footer">
+                    <button @click="closeRevertModal()" class="btn btn-ghost" :disabled="saving">Cancel</button>
+                    <button @click="confirmRevertChange()" class="btn btn-warning" :disabled="saving">
+                        <span x-show="saving" class="spinner" style="width: 14px; height: 14px;"></span>
+                        Revert Now
+                    </button>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <!-- Schedule Change Modal -->
+    <template x-if="showScheduleModal">
+        <div class="modal-backdrop" @click.self="closeScheduleModal()">
+            <div class="modal" style="max-width: 720px;">
+                <div class="modal-header">
+                    <h3 x-text="scheduleMode === 'edit' ? 'Edit Scheduled Change' : 'Save as Scheduled Change'"></h3>
+                    <button @click="closeScheduleModal()" class="btn btn-ghost btn-icon btn-sm">×</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>Name</label>
+                        <input type="text" class="form-input" x-model="scheduleForm.name" placeholder="e.g. Cutover www A record">
+                    </div>
+                    <div class="form-group">
+                        <label>Description (optional)</label>
+                        <textarea class="form-input" x-model="scheduleForm.description" rows="2"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-check">
+                            <input type="checkbox" x-model="scheduleForm.applyNow">
+                            <span>Save as draft (apply manually later)</span>
+                        </label>
+                    </div>
+                    <template x-if="!scheduleForm.applyNow">
+                        <div>
+                            <div class="form-group">
+                                <label>Schedule (local time)</label>
+                                <input type="datetime-local" class="form-input" x-model="scheduleForm.scheduledLocal">
+                                <p class="form-hint" x-show="scheduleForm.scheduledLocal"
+                                   x-text="'UTC: ' + (scheduleForm.scheduledLocal ? new Date(scheduleForm.scheduledLocal).toISOString() : '')"></p>
+                            </div>
+                            <div class="form-group">
+                                <label>Expiry window (hours after schedule)</label>
+                                <input type="number" class="form-input" x-model.number="scheduleForm.expiryHours" min="1" max="168">
+                                <p class="form-hint">The change will not apply if it is still pending after this window.</p>
+                            </div>
+                        </div>
+                    </template>
+                    <div class="form-group">
+                        <label class="form-check">
+                            <input type="checkbox" x-model="scheduleForm.autoPrerequisites">
+                            <span>Auto DNS prerequisites (NXRRSET for add, YXRRSET for delete/replace)</span>
+                        </label>
+                    </div>
+
+                    <div class="form-group">
+                        <div class="form-group-header">
+                            <label>Operations (<span x-text="scheduleOps.length"></span>)</label>
+                            <div class="form-group-header-actions">
+                                <span class="text-muted text-sm" x-text="scheduleZone.replace(/\.$/, '')"></span>
+                                <button type="button" class="btn btn-ghost btn-sm" @click="addScheduleOp()">+ Add</button>
+                            </div>
+                        </div>
+                        <p class="form-hint" x-show="scheduleOps.length === 0">
+                            Add at least one DNS operation to this change.
+                        </p>
+                        <template x-if="scheduleOps.length > 0">
+                            <div class="schedule-op-headers" aria-hidden="true">
+                                <span>Action</span>
+                                <span>Name</span>
+                                <span>Type</span>
+                                <span>TTL</span>
+                                <span></span>
+                            </div>
+                        </template>
+                        <template x-for="(op, index) in scheduleOps" :key="index">
+                            <div class="schedule-op-row">
+                                <div class="schedule-op-fields">
+                                    <select x-model="op.action" class="form-select schedule-op-action" :class="op.action"
+                                            title="Action" aria-label="Action">
+                                        <option value="add">ADD</option>
+                                        <option value="delete">DELETE</option>
+                                        <option value="replace">REPLACE</option>
+                                    </select>
+                                    <input type="text" class="form-input" x-model="op.name"
+                                           placeholder="name" aria-label="Name">
+                                    <input type="text" class="form-input" x-model="op.type"
+                                           placeholder="type" aria-label="Type">
+                                    <input type="number" class="form-input schedule-op-ttl" x-model.number="op.ttl"
+                                           placeholder="TTL" min="0" aria-label="TTL">
+                                    <button type="button" class="btn btn-ghost btn-sm btn-icon btn-action-delete"
+                                            @click="removeScheduleOp(index)" title="Remove operation">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                        </svg>
+                                    </button>
+                                </div>
+                                <label class="schedule-op-records-label" x-show="op.action !== 'delete'">
+                                    <span>Records</span>
+                                    <textarea class="form-input" x-model="op.recordsText" rows="2"
+                                              placeholder="One value per line"></textarea>
+                                </label>
+                            </div>
+                        </template>
+                    </div>
+
+                    <div class="form-group">
+                        <div class="form-group-header">
+                            <label>Additional prerequisites</label>
+                            <button type="button" class="btn btn-ghost btn-sm" @click="addPrereqRow()">+ Add</button>
+                        </div>
+                        <p class="form-hint" x-show="prereqRows.length === 0">
+                            None. The change relies on the auto prerequisites above.
+                        </p>
+                        <template x-for="(row, index) in prereqRows" :key="index">
+                            <div class="prereq-row">
+                                <select x-model="row.prereq_type" class="form-select">
+                                    <option value="nxdomain">NXDOMAIN</option>
+                                    <option value="yxdomain">YXDOMAIN</option>
+                                    <option value="nxrrset">NXRRSET</option>
+                                    <option value="yxrrset">YXRRSET</option>
+                                </select>
+                                <input type="text" class="form-input" x-model="row.name" placeholder="name">
+                                <input type="text" class="form-input" x-model="row.rdtype" placeholder="type"
+                                       x-show="row.prereq_type === 'nxrrset' || row.prereq_type === 'yxrrset'">
+                                <input type="text" class="form-input" x-model="row.data" placeholder="data (optional)"
+                                       x-show="row.prereq_type === 'yxrrset'">
+                                <button type="button" class="btn btn-ghost btn-sm btn-icon btn-action-delete"
+                                        @click="removePrereqRow(index)" title="Remove prerequisite">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                    </svg>
+                                </button>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button @click="closeScheduleModal()" class="btn btn-ghost">Cancel</button>
+                    <button @click="saveScheduledChange()" class="btn btn-success" :disabled="saving">
+                        <span x-show="saving" class="spinner" style="width: 14px; height: 14px;"></span>
+                        <span x-text="scheduleMode === 'edit' ? 'Save Changes' : 'Save Change'"></span>
                     </button>
                 </div>
             </div>

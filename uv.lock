@@ -12,6 +12,15 @@ wheels = [
 ]
 
 [[package]]
+name = "aiosqlite"
+version = "0.22.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/4e/8a/64761f4005f17809769d23e518d915db74e6310474e733e3593cfc854ef1/aiosqlite-0.22.1.tar.gz", hash = "sha256:043e0bd78d32888c0a9ca90fc788b38796843360c855a7262a532813133a0650", size = 14821, upload-time = "2025-12-23T19:25:43.997Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/00/b7/e3bf5133d697a08128598c8d0abc5e16377b51465a33756de24fa7dee953/aiosqlite-0.22.1-py3-none-any.whl", hash = "sha256:21c002eb13823fad740196c5a2e9d8e62f6243bd9e7e4a1f87fb5e44ecb4fceb", size = 17405, upload-time = "2025-12-23T19:25:42.139Z" },
+]
+
+[[package]]
 name = "annotated-doc"
 version = "0.0.4"
 source = { registry = "https://pypi.org/simple" }
@@ -51,9 +60,9 @@ dependencies = [
     { name = "prometheus-client" },
     { name = "uvicorn" },
 ]
-sdist = { url = "https://codeberg.org/api/packages/davidgroves/pypi/files/catalog-zone-indexer/0.2.1/catalog_zone_indexer-0.2.1.tar.gz", hash = "sha256:a861ec6a71e42cb828769a4ffc7ebedce33e97dc00adb768bd6834b7385e4eb6" }
+sdist = { url = "https://codeberg.org/api/packages/davidgroves/pypi/files/catalog-zone-indexer/0.2.1/catalog_zone_indexer-0.2.1.tar.gz", hash = "sha256:a861ec6a71e42cb828769a4ffc7ebedce33e97dc00adb768bd6834b7385e4eb6", size = 131966 }
 wheels = [
-    { url = "https://codeberg.org/api/packages/davidgroves/pypi/files/catalog-zone-indexer/0.2.1/catalog_zone_indexer-0.2.1-py3-none-any.whl", hash = "sha256:608b5f3218951c505d7690ee564c71eec8b3310d2f50dd776e11200fc7765001" },
+    { url = "https://codeberg.org/api/packages/davidgroves/pypi/files/catalog-zone-indexer/0.2.1/catalog_zone_indexer-0.2.1-py3-none-any.whl", hash = "sha256:608b5f3218951c505d7690ee564c71eec8b3310d2f50dd776e11200fc7765001", size = 12720 },
 ]
 
 [[package]]
@@ -331,6 +340,7 @@ source = { editable = "." }
 [package.optional-dependencies]
 api = [
     { name = "aiofiles" },
+    { name = "aiosqlite" },
     { name = "catalog-zone-indexer" },
     { name = "click" },
     { name = "dnspython" },
@@ -350,6 +360,7 @@ cli = [
 ]
 dev = [
     { name = "aiofiles" },
+    { name = "aiosqlite" },
     { name = "catalog-zone-indexer" },
     { name = "click" },
     { name = "debugpy" },
@@ -381,6 +392,8 @@ dev = [
 requires-dist = [
     { name = "aiofiles", marker = "extra == 'api'", specifier = ">=24.1.0" },
     { name = "aiofiles", marker = "extra == 'dev'", specifier = ">=24.1.0" },
+    { name = "aiosqlite", marker = "extra == 'api'", specifier = ">=0.20.0" },
+    { name = "aiosqlite", marker = "extra == 'dev'", specifier = ">=0.20.0" },
     { name = "catalog-zone-indexer", marker = "extra == 'api'", specifier = ">=0.2.1", index = "https://codeberg.org/api/packages/davidgroves/pypi/simple/" },
     { name = "catalog-zone-indexer", marker = "extra == 'dev'", specifier = ">=0.2.1", index = "https://codeberg.org/api/packages/davidgroves/pypi/simple/" },
     { name = "click", marker = "extra == 'api'", specifier = ">=8.1.0" },

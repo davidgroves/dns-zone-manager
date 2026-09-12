@@ -82,11 +82,52 @@ export function createInitialState(config: AppConfig): AppState {
     showNsupdate: false,
     showAtomicModal: false,
     showReversePtrModal: false,
+    showScheduleModal: false,
+    showScheduledView: false,
+    showAuditView: false,
 
     // Atomic mode
     atomicMode: false,
     atomicQueue: [],
     atomicResult: null,
+
+    // Scheduled changes
+    scheduledChanges: [],
+    scheduledLoading: false,
+    scheduleForm: {
+      name: '',
+      description: '',
+      applyNow: true,
+      scheduledLocal: '',
+      expiryHours: 1,
+      autoPrerequisites: true,
+    },
+    scheduleMode: 'create',
+    editingChangeId: null,
+    scheduleOps: [],
+    scheduleZone: '',
+    prereqRows: [],
+    previewResult: null,
+    previewLoading: false,
+    selectedScheduledChange: null,
+    scheduledStatusFilters: ['draft', 'scheduled', 'failed'],
+    showScheduledStatusMenu: false,
+    showRevertModal: false,
+    revertPreview: null,
+
+    // Audit log
+    auditEvents: [],
+    auditLoading: false,
+    auditTotal: 0,
+    auditLimit: 50,
+    auditOffset: 0,
+    auditEventFilters: [],
+    showAuditEventMenu: false,
+    auditActorFilter: '',
+    auditZoneFilter: '',
+    auditQuery: '',
+    auditSince: '',
+    auditUntil: '',
 
     // Reverse PTR
     reversePtrTarget: '',

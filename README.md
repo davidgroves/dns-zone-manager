@@ -102,6 +102,17 @@ scheduler:
   lease_ttl: 120
   default_expiry_window: 3600
 
+# Purge completed changes / audit events by age and/or database size
+retention:
+  enabled: true
+  interval: 3600
+  max_age_days: 0          # 0 disables age-based purge
+  max_database_mb: 2048    # trim oldest 10% when over this size (0 disables)
+  trim_percent: 10
+  max_trim_passes: 10
+  statuses: [applied, failed, cancelled, expired, reverted]
+  vacuum: incremental      # incremental | full | off
+
 # Change notifications to Slack / Teams / any JSON endpoint
 webhooks:
   enabled: true
@@ -239,6 +250,12 @@ CACHE_ENABLED=true
 # Scheduler (scheduled DNS changes)
 SCHEDULER_ENABLED=true
 SCHEDULER_DATABASE_PATH=/var/lib/dns-zone-manager/scheduler.db
+
+# Retention (purge completed changes / audit events)
+RETENTION_ENABLED=true
+RETENTION_MAX_AGE_DAYS=0
+RETENTION_MAX_DATABASE_MB=2048
+RETENTION_TRIM_PERCENT=10
 
 # Change webhooks (targets themselves must be configured via YAML)
 WEBHOOK_ENABLED=true

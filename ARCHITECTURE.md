@@ -207,6 +207,21 @@ Schema creation and upgrades are handled by Alembic, packaged inside the distrib
 
 Within a process, transactions are serialised by a re-entrant lock and owned by the outermost store method. Store methods therefore compose (`create()` calls `get()`) while each remaining atomic: a method that fails partway through leaves nothing behind.
 
+### Retention
+
+Completed changes and their cascading audit events can be purged so the intent store does not grow without bound. Retention is configured under `retention:` and runs on idle scheduler ticks (never while a due change is being applied).
+
+Two policies can be enabled independently:
+
+| Policy | Config | Behaviour |
+|--------|--------|-----------|
+| Age | `max_age_days` | Delete eligible rows whose completion timestamp is older than the cutoff (`0` disables) |
+| Size | `max_database_mb` | While the on-disk database exceeds the limit, delete the oldest `trim_percent` of eligible rows and reclaim space, repeating up to `max_trim_passes` (`0` disables; default 2048 MiB / 10%) |
+
+A change is eligible only when its status is in `retention.statuses` (default: `applied`, `failed`, `cancelled`, `expired`, `reverted`) and both `scheduled_at` and `next_attempt_at` are null or in the past. Draft, scheduled, and running rows are never deleted. Because DNS remains the source of truth for zone contents, purging intent history does not change what the DNS server serves.
+
+Space reclamation (`vacuum: incremental|full|off`) is required for the size cap to shrink the file: SQLite and PostgreSQL do not return pages to the filesystem on `DELETE` alone.
+
 ### The Cache is Not a Source of Truth
 
 This system maintains an in-memory cache of zone data for performance. This cache is:

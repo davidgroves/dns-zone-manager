@@ -133,6 +133,40 @@ scheduled_change_lateness_seconds = Histogram(
     buckets=(1, 5, 15, 30, 60, 120, 300, 600, 1800, 3600),
 )
 
+# Retention / purge metrics
+retention_changes_purged_total = Counter(
+    "dns_zone_manager_retention_changes_purged_total",
+    "Total number of scheduled changes purged by retention policy",
+    ["reason", "status"],  # reason: age, size
+)
+
+retention_events_purged_total = Counter(
+    "dns_zone_manager_retention_events_purged_total",
+    "Total number of audit events purged by retention policy",
+    ["reason"],  # age, size
+)
+
+retention_database_bytes = Gauge(
+    "dns_zone_manager_retention_database_bytes",
+    "On-disk size of the scheduled-change database in bytes",
+)
+
+retention_last_success_timestamp_seconds = Gauge(
+    "dns_zone_manager_retention_last_success_timestamp_seconds",
+    "Unix timestamp of the last successful retention pass",
+)
+
+retention_duration_seconds = Histogram(
+    "dns_zone_manager_retention_duration_seconds",
+    "Duration of retention maintenance passes",
+    buckets=(0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120),
+)
+
+retention_errors_total = Counter(
+    "dns_zone_manager_retention_errors_total",
+    "Total number of retention pass failures",
+)
+
 # Scheduled change store (database) metrics
 store_operation_duration_seconds = Histogram(
     "dns_zone_manager_store_operation_duration_seconds",

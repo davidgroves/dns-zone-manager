@@ -259,6 +259,41 @@ scheduler:
   default_expiry_window: 3600
 
 # =============================================================================
+# Retention (purge completed changes and audit events)
+# =============================================================================
+# Completed scheduled changes and their cascading audit events can be removed
+# by age and/or by total database size. Rows with a future scheduled_at or
+# next_attempt_at are never deleted. Draft/scheduled/running are never eligible.
+retention:
+  # Run retention passes from the scheduler loop
+  enabled: true
+
+  # Seconds between retention maintenance passes
+  interval: 3600
+
+  # Delete eligible completed changes older than this many days (0 disables)
+  max_age_days: 0
+
+  # When the database exceeds this size in MB, trim the oldest eligible rows
+  # (0 disables). Default is 2 GiB.
+  max_database_mb: 2048
+
+  # Percent of eligible rows to delete per size-trim pass
+  trim_percent: 10
+
+  # Cap on size-trim passes per retention tick
+  max_trim_passes: 10
+
+  # Statuses eligible for purge
+  statuses: [applied, failed, cancelled, expired, reverted]
+
+  # Reclaim disk space after deletes: incremental | full | off
+  vacuum: incremental
+
+  # Count and log candidates without deleting
+  dry_run: false
+
+# =============================================================================
 # Change Webhooks (Slack / Microsoft Teams / generic)
 # =============================================================================
 # Posts a notification whenever a DNS change is committed, reporting who made

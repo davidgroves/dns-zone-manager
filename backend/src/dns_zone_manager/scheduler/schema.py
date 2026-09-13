@@ -127,6 +127,7 @@ scheduled_changes = Table(
     Index("idx_scheduled_changes_zone", "zone"),
     Index("idx_scheduled_changes_due", "status", "scheduled_at"),
     Index("idx_scheduled_changes_source", "source"),
+    Index("idx_scheduled_changes_retention", "status", "updated_at"),
 )
 
 scheduled_operations = Table(

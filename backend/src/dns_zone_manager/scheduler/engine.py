@@ -39,6 +39,10 @@ def _register_sqlite_pragmas(engine: Engine) -> None:
 
     Foreign keys and the WAL journal are connection-scoped, so they must be set
     on every pooled connection rather than once at startup.
+
+    ``auto_vacuum=INCREMENTAL`` only takes effect on a brand-new database (no
+    tables yet). Existing files keep their current mode until retention runs a
+    converting ``VACUUM``.
     """
 
     @event.listens_for(engine, "connect")
@@ -51,6 +55,7 @@ def _register_sqlite_pragmas(engine: Engine) -> None:
         try:
             cursor.execute("PRAGMA foreign_keys = ON")
             cursor.execute("PRAGMA journal_mode = WAL")
+            cursor.execute("PRAGMA auto_vacuum = INCREMENTAL")
         finally:
             cursor.close()
 

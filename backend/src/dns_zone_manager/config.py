@@ -559,6 +559,84 @@ class SchedulerSettings(BaseSettings):
     )
 
 
+RetentionVacuumMode = Literal["incremental", "full", "off"]
+
+_DEFAULT_PURGE_STATUSES = ["applied", "failed", "cancelled", "expired", "reverted"]
+_ALLOWED_PURGE_STATUSES = frozenset(_DEFAULT_PURGE_STATUSES)
+_NON_PURGEABLE_STATUSES = frozenset({"draft", "scheduled", "running"})
+
+
+class RetentionSettings(BaseSettings):
+    """Purge completed scheduled changes and their cascading audit events.
+
+    Age-based and size-based policies can be enabled independently. Rows with a
+    future ``scheduled_at`` or ``next_attempt_at`` are never deleted.
+    """
+
+    model_config = SettingsConfigDict(env_prefix="RETENTION_")
+
+    enabled: bool = Field(
+        default=True,
+        description="Enable periodic retention passes in the scheduler loop",
+    )
+    interval: float = Field(
+        default=3600.0,
+        description="Seconds between retention maintenance passes",
+    )
+    max_age_days: int = Field(
+        default=0,
+        ge=0,
+        description="Delete eligible completed changes older than this many days (0 disables)",
+    )
+    max_database_mb: int = Field(
+        default=2048,
+        ge=0,
+        description=(
+            "Trim oldest eligible changes when the database exceeds this size in MB (0 disables)"
+        ),
+    )
+    trim_percent: int = Field(
+        default=10,
+        ge=1,
+        le=100,
+        description="Percent of eligible rows to delete per size-trim pass",
+    )
+    max_trim_passes: int = Field(
+        default=10,
+        ge=1,
+        description="Maximum size-trim passes per retention tick",
+    )
+    statuses: list[str] = Field(
+        default_factory=lambda: list(_DEFAULT_PURGE_STATUSES),
+        description="Change statuses eligible for retention purge",
+    )
+    vacuum: RetentionVacuumMode = Field(
+        default="incremental",
+        description="How to reclaim disk space after deletes (incremental, full, or off)",
+    )
+    dry_run: bool = Field(
+        default=False,
+        description="Count and log what would be purged without deleting anything",
+    )
+
+    @model_validator(mode="after")
+    def validate_statuses(self) -> "RetentionSettings":
+        """Only completed statuses may be purged; reject unfinished work."""
+        forbidden = sorted(_NON_PURGEABLE_STATUSES.intersection(self.statuses))
+        if forbidden:
+            raise ValueError(
+                "retention.statuses cannot include active statuses: " + ", ".join(forbidden)
+            )
+        unknown = sorted(set(self.statuses) - _ALLOWED_PURGE_STATUSES - _NON_PURGEABLE_STATUSES)
+        if unknown:
+            raise ValueError(
+                "retention.statuses contains unknown values: "
+                + ", ".join(unknown)
+                + f" (allowed: {sorted(_ALLOWED_PURGE_STATUSES)})"
+            )
+        return self
+
+
 DatabaseBackend = Literal["sqlite", "postgres"]
 
 
@@ -1114,6 +1192,9 @@ class Settings(BaseSettings):
     # Persistence backend for scheduled changes
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
 
+    # Retention / purge of completed scheduled changes and audit events
+    retention: RetentionSettings = Field(default_factory=RetentionSettings)
+
     # Outbound webhook notification settings
     webhooks: WebhookSettings = Field(default_factory=WebhookSettings)
 
@@ -1243,6 +1324,7 @@ class Settings(BaseSettings):
             notify=from_yaml(NotifySettings, yaml_config.get("notify")),
             scheduler=from_yaml(SchedulerSettings, yaml_config.get("scheduler")),
             database=from_yaml(DatabaseSettings, yaml_config.get("database")),
+            retention=from_yaml(RetentionSettings, yaml_config.get("retention")),
             webhooks=from_yaml(WebhookSettings, yaml_config.get("webhooks")),
             theme=from_yaml(ThemeSettings, yaml_config.get("theme")),
             logging=from_yaml(LoggingSettings, yaml_config.get("logging")),

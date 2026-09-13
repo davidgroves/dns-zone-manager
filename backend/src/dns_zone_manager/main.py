@@ -360,6 +360,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
                 dns_client,
                 zone_cache,
                 settings.scheduler,
+                settings.retention,
             )
         )
         log_internal_event(

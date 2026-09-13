@@ -23,13 +23,13 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Concatenate
 
-from sqlalchemy import Text, cast, delete, func, insert, or_, select, update
+from sqlalchemy import Text, cast, delete, func, insert, or_, select, text, update
 from sqlalchemy.engine.row import RowMapping
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from sqlalchemy.sql.elements import ColumnElement
 
-from dns_zone_manager.config import DatabaseSettings
+from dns_zone_manager.config import DatabaseSettings, RetentionVacuumMode
 from dns_zone_manager.metrics import store_errors_total, store_operation_duration_seconds
 from dns_zone_manager.models.requests import AtomicOperation
 from dns_zone_manager.models.scheduled import (
@@ -88,6 +88,29 @@ class OpSnapshot:
     prior_ttl: int | None
     prior_records: list[str] | None
     snapshot_at: datetime
+
+
+@dataclass
+class PurgeBatchResult:
+    """Outcome of one retention delete (or dry-run) batch."""
+
+    deleted_ids: list[str] = field(default_factory=list)
+    by_status: dict[str, int] = field(default_factory=dict)
+    events_deleted: int = 0
+
+    @property
+    def changes_deleted(self) -> int:
+        return len(self.deleted_ids)
+
+
+def _completion_ts() -> ColumnElement[Any]:
+    """Best available completion timestamp for retention ordering and age cuts."""
+    return func.coalesce(
+        scheduled_changes.c.reverted_at,
+        scheduled_changes.c.applied_at,
+        scheduled_changes.c.updated_at,
+        scheduled_changes.c.created_at,
+    )
 
 
 def _utcnow() -> datetime:
@@ -227,6 +250,9 @@ class ScheduledChangeStore:
         self._owns_engine = engine is None
         self._tx = _TransactionLock()
         self._connection: AsyncConnection | None = None
+        # True once a converting VACUUM has put this SQLite file into
+        # INCREMENTAL auto_vacuum mode (or we confirmed it already is).
+        self._sqlite_incremental_ready = False
 
     @property
     def backend(self) -> str:
@@ -1074,6 +1100,221 @@ class ScheduledChangeStore:
             .where(scheduled_changes.c.status.in_(sorted(PENDING_STATUSES)))
         )
         return int(result.scalar() or 0)
+
+    def _purgeable_filters(
+        self,
+        statuses: list[str] | frozenset[str] | set[str],
+        now: datetime,
+        *,
+        older_than: datetime | None = None,
+    ) -> list[ColumnElement[bool]]:
+        """SQL filters for changes that retention is allowed to delete."""
+        status_list = sorted(statuses)
+        clauses: list[ColumnElement[bool]] = [
+            scheduled_changes.c.status.in_(status_list),
+            or_(
+                scheduled_changes.c.scheduled_at.is_(None),
+                scheduled_changes.c.scheduled_at <= now,
+            ),
+            or_(
+                scheduled_changes.c.next_attempt_at.is_(None),
+                scheduled_changes.c.next_attempt_at <= now,
+            ),
+        ]
+        if older_than is not None:
+            clauses.append(_completion_ts() < older_than)
+        return clauses
+
+    async def database_size_bytes(self) -> int:
+        """On-disk size consumed by the scheduled-change database.
+
+        For SQLite this is the main file plus ``-wal`` and ``-shm``. For
+        PostgreSQL it is the sum of ``pg_total_relation_size`` for the store
+        tables (and their indexes/TOAST), so a shared server is not charged for
+        unrelated databases.
+        """
+        if self.settings.backend == "sqlite":
+            path = self.database_path
+            if path is None:
+                return 0
+            total = 0
+            for candidate in (path, Path(f"{path}-wal"), Path(f"{path}-shm")):
+                try:
+                    total += candidate.stat().st_size
+                except FileNotFoundError:
+                    continue
+            return total
+
+        engine = self._require_engine()
+        table_names = (
+            "scheduled_changes",
+            "scheduled_operations",
+            "scheduled_prerequisites",
+            "scheduled_change_events",
+        )
+        async with engine.connect() as connection:
+            total = 0
+            for name in table_names:
+                result = await connection.execute(
+                    text("SELECT pg_total_relation_size(:name)"),
+                    {"name": name},
+                )
+                total += int(result.scalar() or 0)
+            return total
+
+    @_transactional
+    async def count_purgeable(
+        self,
+        statuses: list[str] | frozenset[str] | set[str],
+        *,
+        now: datetime | None = None,
+        older_than: datetime | None = None,
+    ) -> int:
+        """Count changes eligible for retention purge."""
+        now = now or _utcnow()
+        result = await self._conn().execute(
+            select(func.count())
+            .select_from(scheduled_changes)
+            .where(*self._purgeable_filters(statuses, now, older_than=older_than))
+        )
+        return int(result.scalar() or 0)
+
+    @_transactional
+    async def purge_by_age(
+        self,
+        cutoff: datetime,
+        statuses: list[str] | frozenset[str] | set[str],
+        *,
+        now: datetime | None = None,
+        batch_size: int = 500,
+        dry_run: bool = False,
+    ) -> PurgeBatchResult:
+        """Delete eligible changes whose completion timestamp is older than cutoff."""
+        now = now or _utcnow()
+        return await self._purge_matching(
+            self._purgeable_filters(statuses, now, older_than=cutoff),
+            limit=batch_size,
+            dry_run=dry_run,
+        )
+
+    @_transactional
+    async def purge_oldest(
+        self,
+        limit: int,
+        statuses: list[str] | frozenset[str] | set[str],
+        *,
+        now: datetime | None = None,
+        dry_run: bool = False,
+    ) -> PurgeBatchResult:
+        """Delete the oldest ``limit`` eligible changes by completion timestamp."""
+        now = now or _utcnow()
+        if limit <= 0:
+            return PurgeBatchResult()
+        return await self._purge_matching(
+            self._purgeable_filters(statuses, now),
+            limit=limit,
+            dry_run=dry_run,
+        )
+
+    async def _purge_matching(
+        self,
+        filters: list[ColumnElement[bool]],
+        *,
+        limit: int,
+        dry_run: bool,
+    ) -> PurgeBatchResult:
+        """Select, optionally delete, and summarise a purgeable batch."""
+        conn = self._conn()
+        result = await conn.execute(
+            select(scheduled_changes.c.id, scheduled_changes.c.status)
+            .where(*filters)
+            .order_by(_completion_ts().asc(), scheduled_changes.c.id.asc())
+            .limit(limit)
+        )
+        rows = list(result.mappings().all())
+        if not rows:
+            return PurgeBatchResult()
+
+        ids = [row["id"] for row in rows]
+        by_status: dict[str, int] = {}
+        for row in rows:
+            status = str(row["status"])
+            by_status[status] = by_status.get(status, 0) + 1
+
+        events_result = await conn.execute(
+            select(func.count())
+            .select_from(scheduled_change_events)
+            .where(scheduled_change_events.c.change_id.in_(ids))
+        )
+        events_deleted = int(events_result.scalar() or 0)
+
+        if not dry_run:
+            await conn.execute(delete(scheduled_changes).where(scheduled_changes.c.id.in_(ids)))
+
+        return PurgeBatchResult(
+            deleted_ids=ids,
+            by_status=by_status,
+            events_deleted=events_deleted,
+        )
+
+    async def reclaim_space(self, mode: RetentionVacuumMode) -> None:
+        """Reclaim disk space after deletes. Must not run inside a transaction."""
+        if mode == "off":
+            return
+
+        if self.settings.backend == "sqlite":
+            await self._reclaim_sqlite(mode)
+            return
+
+        await self._reclaim_postgres(mode)
+
+    async def _reclaim_sqlite(self, mode: RetentionVacuumMode) -> None:
+        engine = self._require_engine()
+        # VACUUM cannot run inside a transaction; hold the store lock so API
+        # traffic waits rather than interleaving with the vacuum.
+        async with self._tx() as outermost:
+            if not outermost:
+                raise RuntimeError("reclaim_space cannot run inside a store transaction")
+            async with engine.connect() as connection:
+                await connection.execution_options(isolation_level="AUTOCOMMIT")
+                if mode == "full":
+                    await connection.execute(text("PRAGMA wal_checkpoint(TRUNCATE)"))
+                    await connection.execute(text("VACUUM"))
+                    self._sqlite_incremental_ready = True
+                    return
+
+                # incremental
+                auto_vacuum = await connection.execute(text("PRAGMA auto_vacuum"))
+                current = int(auto_vacuum.scalar() or 0)
+                if current != 2 and not self._sqlite_incremental_ready:
+                    # 0=none, 1=full, 2=incremental. Convert existing files once.
+                    await connection.execute(text("PRAGMA auto_vacuum = INCREMENTAL"))
+                    await connection.execute(text("PRAGMA wal_checkpoint(TRUNCATE)"))
+                    await connection.execute(text("VACUUM"))
+                    self._sqlite_incremental_ready = True
+                    logger.info("Converted SQLite store to incremental auto_vacuum")
+                    return
+
+                self._sqlite_incremental_ready = True
+                await connection.execute(text("PRAGMA wal_checkpoint(TRUNCATE)"))
+                await connection.execute(text("PRAGMA incremental_vacuum"))
+
+    async def _reclaim_postgres(self, mode: RetentionVacuumMode) -> None:
+        engine = self._require_engine()
+        tables = (
+            "scheduled_changes",
+            "scheduled_operations",
+            "scheduled_prerequisites",
+            "scheduled_change_events",
+        )
+        async with self._tx() as outermost:
+            if not outermost:
+                raise RuntimeError("reclaim_space cannot run inside a store transaction")
+            async with engine.connect() as connection:
+                await connection.execution_options(isolation_level="AUTOCOMMIT")
+                verb = "VACUUM FULL" if mode == "full" else "VACUUM"
+                for table in tables:
+                    await connection.execute(text(f"{verb} {table}"))
 
     @_transactional
     async def list_events(

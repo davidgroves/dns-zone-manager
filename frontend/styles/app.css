@@ -1,6 +1,7 @@
-/* DNS Zone Editor - Dark Theme */
+/* DNS Zone Editor - Light / Dark themes via data-theme */
 
-:root {
+:root,
+:root[data-theme="dark"] {
     --bg-primary: #0f1419;
     --bg-secondary: #1a1f2e;
     --bg-tertiary: #252b3b;
@@ -14,9 +15,79 @@
     --accent-warning: #d29922;
     --accent-danger: #f85149;
     --accent-info: #a371f7;
-    --shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    --record-a: var(--accent-success);
+    --record-aaaa: var(--accent-info);
+    --record-cname: var(--accent-warning);
+    --record-mx: #f778ba;
+    --record-txt: #79c0ff;
+    --record-ns: #ffa657;
+    --record-soa: var(--text-muted);
+    --record-ptr: var(--accent-primary);
+    --record-srv: var(--accent-info);
+    --record-caa: var(--accent-warning);
+    --shadow-color: rgba(0, 0, 0, 0.4);
+    --overlay-bg: rgba(0, 0, 0, 0.7);
+    --btn-on-warning: #1a1a1a;
     --radius: 6px;
     --radius-lg: 10px;
+}
+
+:root[data-theme="light"] {
+    --bg-primary: #ffffff;
+    --bg-secondary: #f6f8fa;
+    --bg-tertiary: #eaeef2;
+    --bg-hover: #e1e6ec;
+    --border-color: #d0d7de;
+    --text-primary: #1f2328;
+    --text-secondary: #57606a;
+    --text-muted: #8c959f;
+    --accent-primary: #0969da;
+    --accent-success: #1a7f37;
+    --accent-warning: #9a6700;
+    --accent-danger: #cf222e;
+    --accent-info: #8250df;
+    --record-a: var(--accent-success);
+    --record-aaaa: var(--accent-info);
+    --record-cname: var(--accent-warning);
+    --record-mx: #bf3989;
+    --record-txt: #0969da;
+    --record-ns: #bc4c00;
+    --record-soa: var(--text-muted);
+    --record-ptr: var(--accent-primary);
+    --record-srv: var(--accent-info);
+    --record-caa: var(--accent-warning);
+    --shadow-color: rgba(0, 0, 0, 0.12);
+    --overlay-bg: rgba(31, 35, 40, 0.45);
+    --btn-on-warning: #ffffff;
+}
+
+:root {
+    /* Derived accents — driven by the base tokens so config overrides cascade */
+    --accent-primary-hover: color-mix(in srgb, var(--accent-primary) 82%, black);
+    --accent-primary-soft: color-mix(in srgb, var(--accent-primary) 20%, transparent);
+    --accent-primary-ring: color-mix(in srgb, var(--accent-primary) 20%, transparent);
+    --accent-primary-border: color-mix(in srgb, var(--accent-primary) 45%, transparent);
+    --accent-success-hover: color-mix(in srgb, var(--accent-success) 82%, black);
+    --accent-success-soft: color-mix(in srgb, var(--accent-success) 15%, transparent);
+    --accent-success-border: color-mix(in srgb, var(--accent-success) 45%, transparent);
+    --accent-danger-hover: color-mix(in srgb, var(--accent-danger) 82%, black);
+    --accent-danger-soft: color-mix(in srgb, var(--accent-danger) 15%, transparent);
+    --accent-danger-border: color-mix(in srgb, var(--accent-danger) 45%, transparent);
+    --accent-warning-hover: color-mix(in srgb, var(--accent-warning) 82%, black);
+    --accent-warning-soft: color-mix(in srgb, var(--accent-warning) 15%, transparent);
+    --accent-warning-border: color-mix(in srgb, var(--accent-warning) 45%, transparent);
+    --accent-info-soft: color-mix(in srgb, var(--accent-info) 15%, transparent);
+    --accent-info-border: color-mix(in srgb, var(--accent-info) 45%, transparent);
+    --shadow: 0 4px 12px var(--shadow-color);
+    --shadow-lg: 0 8px 24px var(--shadow-color);
+
+    /* Aliases used across app.css and inline styles */
+    --accent: var(--accent-primary);
+    --success: var(--accent-success);
+    --danger: var(--accent-danger);
+    --warning: var(--accent-warning);
+    --accent-subtle: var(--accent-primary-soft);
+    --warning-subtle: var(--accent-warning-soft);
 }
 
 * {
@@ -56,6 +127,32 @@ body {
     border-bottom: 1px solid var(--border-color);
 }
 
+.sidebar-header .home-button {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0;
+    margin: 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+    color: inherit;
+    font: inherit;
+}
+
+.sidebar-header .home-button:hover h1,
+.sidebar-header .home-button:focus-visible h1 {
+    color: var(--accent-primary);
+}
+
+.sidebar-header .home-button:focus-visible {
+    outline: 2px solid var(--accent-primary-ring);
+    outline-offset: 2px;
+    border-radius: var(--radius);
+}
+
 .sidebar-header h1 {
     font-size: 1.25rem;
     font-weight: 600;
@@ -63,12 +160,25 @@ body {
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    min-width: 0;
 }
 
-.sidebar-header h1 svg {
+.sidebar-header h1 .app-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sidebar-header h1 svg,
+.sidebar-header .home-logo {
     width: 24px;
     height: 24px;
+    flex-shrink: 0;
     color: var(--accent-primary);
+}
+
+.sidebar-header .home-logo {
+    object-fit: contain;
 }
 
 .zone-filter {
@@ -244,7 +354,7 @@ body {
 .search-box input[type="text"]:focus {
     outline: none;
     border-color: var(--accent-primary);
-    box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.2);
+    box-shadow: 0 0 0 3px var(--accent-primary-ring);
 }
 
 .search-box input[type="text"]::placeholder {
@@ -438,13 +548,13 @@ td {
     font-family: monospace;
 }
 
-.record-type.A { color: var(--accent-success); }
-.record-type.AAAA { color: var(--accent-info); }
-.record-type.CNAME { color: var(--accent-warning); }
-.record-type.MX { color: #f778ba; }
-.record-type.TXT { color: #79c0ff; }
-.record-type.NS { color: #ffa657; }
-.record-type.SOA { color: var(--text-muted); }
+.record-type.A { color: var(--record-a); }
+.record-type.AAAA { color: var(--record-aaaa); }
+.record-type.CNAME { color: var(--record-cname); }
+.record-type.MX { color: var(--record-mx); }
+.record-type.TXT { color: var(--record-txt); }
+.record-type.NS { color: var(--record-ns); }
+.record-type.SOA { color: var(--record-soa); }
 
 .record-class {
     display: inline-block;
@@ -493,8 +603,8 @@ tr:hover .record-actions {
 
 .record-actions .btn-action-reverse:hover,
 .record-actions .btn-action-edit:hover {
-    color: #2ea043;
-    background: rgba(63, 185, 80, 0.1);
+    color: var(--accent-success-hover);
+    background: var(--accent-success-soft);
 }
 
 .record-actions .btn-action-delete {
@@ -502,8 +612,8 @@ tr:hover .record-actions {
 }
 
 .record-actions .btn-action-delete:hover {
-    color: #da3633;
-    background: rgba(248, 81, 73, 0.1);
+    color: var(--accent-danger-hover);
+    background: var(--accent-danger-soft);
 }
 
 /* Buttons */
@@ -532,7 +642,7 @@ tr:hover .record-actions {
 }
 
 .btn-primary:hover {
-    background: #4393e6;
+    background: var(--accent-primary-hover);
 }
 
 .btn-success {
@@ -541,12 +651,12 @@ tr:hover .record-actions {
 }
 
 .btn-success:hover {
-    background: #2ea043;
+    background: var(--accent-success-hover);
 }
 
 .btn-warning {
     background: var(--accent-warning);
-    color: #1a1a1a;
+    color: var(--btn-on-warning);
 }
 
 .btn-warning:hover {
@@ -559,7 +669,7 @@ tr:hover .record-actions {
 }
 
 .btn-danger:hover {
-    background: #da3633;
+    background: var(--accent-danger-hover);
 }
 
 .btn-ghost {
@@ -598,7 +708,7 @@ tr:hover .record-actions {
 .modal-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.7);
+    background: var(--overlay-bg);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -682,7 +792,7 @@ input, select, textarea {
 input:focus, select:focus, textarea:focus {
     outline: none;
     border-color: var(--accent-primary);
-    box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.2);
+    box-shadow: 0 0 0 3px var(--accent-primary-ring);
 }
 
 input:disabled, select:disabled, textarea:disabled {
@@ -771,7 +881,7 @@ input[type="radio"] {
     margin: 0;
     border: none;
     background: none;
-    color: var(--accent-primary, #58a6ff);
+    color: var(--accent-primary);
     font: inherit;
     text-decoration: underline;
     cursor: pointer;
@@ -831,21 +941,21 @@ input[type="radio"] {
 }
 
 .schedule-op-action.add {
-    background: rgba(63, 185, 80, 0.2);
+    background: var(--accent-success-soft);
     color: var(--accent-success);
-    border-color: rgba(63, 185, 80, 0.45);
+    border-color: var(--accent-success-border);
 }
 
 .schedule-op-action.delete {
-    background: rgba(248, 81, 73, 0.2);
+    background: var(--accent-danger-soft);
     color: var(--accent-danger);
-    border-color: rgba(248, 81, 73, 0.45);
+    border-color: var(--accent-danger-border);
 }
 
 .schedule-op-action.replace {
-    background: rgba(88, 166, 255, 0.2);
+    background: var(--accent-primary-soft);
     color: var(--accent-primary);
-    border-color: rgba(88, 166, 255, 0.45);
+    border-color: var(--accent-primary-border);
 }
 
 .schedule-op-records-label {
@@ -953,7 +1063,7 @@ input[type="radio"] {
 .type-select:focus {
     outline: none;
     border-color: var(--accent-primary);
-    box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.2);
+    box-shadow: 0 0 0 2px var(--accent-primary-ring);
 }
 
 .type-select:disabled {
@@ -1012,7 +1122,7 @@ input[type="radio"] {
 .class-select:focus {
     outline: none;
     border-color: var(--accent-primary);
-    box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.2);
+    box-shadow: 0 0 0 2px var(--accent-primary-ring);
 }
 
 .class-select:disabled {
@@ -1204,12 +1314,12 @@ input[type="radio"] {
 }
 
 .badge-success {
-    background: rgba(63, 185, 80, 0.2);
+    background: var(--accent-success-soft);
     color: var(--accent-success);
 }
 
 .badge-warning {
-    background: rgba(210, 153, 34, 0.2);
+    background: var(--accent-warning-soft);
     color: var(--accent-warning);
 }
 
@@ -1270,7 +1380,7 @@ input[type="radio"] {
 }
 
 .atomic-toggle.active {
-    background: rgba(63, 185, 80, 0.15);
+    background: var(--accent-success-soft);
     border-color: var(--accent-success);
     color: var(--accent-success);
 }
@@ -1306,7 +1416,7 @@ input[type="radio"] {
 }
 
 .atomic-indicator:hover {
-    background: #2ea043;
+    background: var(--accent-success-hover);
     transform: translateX(-50%) scale(1.05);
 }
 
@@ -1340,17 +1450,17 @@ input[type="radio"] {
 }
 
 .atomic-queue-action.add {
-    background: rgba(63, 185, 80, 0.2);
+    background: var(--accent-success-soft);
     color: var(--accent-success);
 }
 
 .atomic-queue-action.delete {
-    background: rgba(248, 81, 73, 0.2);
+    background: var(--accent-danger-soft);
     color: var(--accent-danger);
 }
 
 .atomic-queue-action.replace {
-    background: rgba(88, 166, 255, 0.2);
+    background: var(--accent-primary-soft);
     color: var(--accent-primary);
 }
 
@@ -1441,7 +1551,7 @@ input[type="radio"] {
 .pagination-select:focus {
     outline: none;
     border-color: var(--accent-primary);
-    box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.2);
+    box-shadow: 0 0 0 2px var(--accent-primary-ring);
 }
 
 .pagination-select-xs {
@@ -1475,7 +1585,7 @@ input[type="radio"] {
 .page-input:focus {
     outline: none;
     border-color: var(--accent-primary);
-    box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.2);
+    box-shadow: 0 0 0 2px var(--accent-primary-ring);
 }
 
 .page-input-sm {
@@ -1525,17 +1635,17 @@ input[type="radio"] {
 }
 
 .status-badge.success {
-    background: rgba(63, 185, 80, 0.2);
+    background: var(--accent-success-soft);
     color: var(--accent-success);
 }
 
 .status-badge.warning {
-    background: rgba(210, 153, 34, 0.2);
+    background: var(--accent-warning-soft);
     color: var(--accent-warning);
 }
 
 .status-badge.error {
-    background: rgba(248, 81, 73, 0.2);
+    background: var(--accent-danger-soft);
     color: var(--accent-danger);
 }
 
@@ -1547,6 +1657,11 @@ input[type="radio"] {
 /* Scheduled changes */
 .scheduled-table-wrap {
     overflow-x: auto;
+    /* As a flex item with a non-visible overflow, this would otherwise be
+       allowed to shrink to zero height, hiding the whole table whenever the
+       detail panel above it is tall. Keep its natural height and let the
+       scrolling parent handle the overflow. */
+    flex-shrink: 0;
 }
 
 .scheduled-view-body {
@@ -1594,7 +1709,7 @@ input[type="radio"] {
 }
 
 .scheduled-row-selected {
-    background: rgba(88, 166, 255, 0.08);
+    background: var(--accent-primary-soft);
 }
 
 .scheduled-table {
@@ -1618,6 +1733,13 @@ input[type="radio"] {
     text-transform: uppercase;
     color: var(--text-muted);
     font-weight: 600;
+}
+
+/* Change names contain long unbroken FQDNs, which would otherwise set a floor
+   on this column's width and push the actions column past the edge of the
+   horizontal scroll container. */
+.scheduled-table td:first-child {
+    overflow-wrap: anywhere;
 }
 
 /* A plain cell (not a flex container) so the column sizes to its buttons and
@@ -1690,15 +1812,49 @@ input[type="radio"] {
 }
 
 .status-badge.info {
-    background: rgba(88, 166, 255, 0.2);
-    color: var(--accent-primary, #58a6ff);
+    background: var(--accent-primary-soft);
+    color: var(--accent-primary);
+}
+
+/* Change origin: created in the scheduler, or auto-recorded from a direct write */
+.source-badge {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 4px;
+    padding: 0.15rem 0.5rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+}
+
+.source-badge-scheduler {
+    background: var(--accent-primary-soft);
+    color: var(--accent-primary);
+}
+
+.source-badge-manual {
+    background: var(--bg-hover);
+    color: var(--text-secondary, var(--text-muted));
+}
+
+.source-filter {
+    display: inline-flex;
+    gap: 0.15rem;
+    flex: 0 0 auto;
+}
+
+.source-filter .btn-active {
+    background: var(--bg-hover);
+    color: var(--text-primary);
 }
 
 .revert-warning {
     margin-top: 1rem;
     padding: 0.75rem 1rem;
     border-left: 3px solid var(--accent-warning);
-    background: rgba(210, 153, 34, 0.12);
+    background: var(--accent-warning-soft);
     color: var(--text-primary);
     font-size: 0.9rem;
     line-height: 1.4;
@@ -1708,7 +1864,7 @@ button.btn-link {
     background: none;
     border: none;
     padding: 0;
-    color: var(--accent-primary, #58a6ff);
+    color: var(--accent-primary);
     cursor: pointer;
     font: inherit;
     text-align: left;
@@ -1798,10 +1954,10 @@ button.btn-link:hover {
     z-index: 40;
     min-width: 12rem;
     padding: 0.5rem;
-    background: var(--bg-secondary, #1c2128);
-    border: 1px solid var(--border-color, #30363d);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
     border-radius: var(--radius, 6px);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    box-shadow: var(--shadow-lg);
 }
 
 .status-filter-action {
@@ -1810,7 +1966,7 @@ button.btn-link:hover {
     padding: 0.35rem 0.5rem;
     border: none;
     background: transparent;
-    color: var(--accent-primary, #58a6ff);
+    color: var(--accent-primary);
     font: inherit;
     font-size: 0.85rem;
     text-align: left;
@@ -1819,13 +1975,13 @@ button.btn-link:hover {
 }
 
 .status-filter-action:hover {
-    background: var(--bg-hover, #21262d);
+    background: var(--bg-hover);
 }
 
 .status-filter-divider {
     height: 1px;
     margin: 0.35rem 0;
-    background: var(--border-color, #30363d);
+    background: var(--border-color);
 }
 
 .status-filter-option {
@@ -1840,7 +1996,7 @@ button.btn-link:hover {
 }
 
 .status-filter-option:hover {
-    background: var(--bg-hover, #21262d);
+    background: var(--bg-hover);
 }
 
 .status-filter-option input[type="checkbox"] {

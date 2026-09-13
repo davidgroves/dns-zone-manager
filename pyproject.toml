@@ -25,7 +25,10 @@ api = [
     "prometheus-client>=0.21.0",
     "click>=8.1.0",  # For server CLI runner
     "catalog-zone-indexer>=0.2.1",
-    "aiosqlite>=0.20.0",
+    "sqlalchemy>=2.0.36",
+    "alembic>=1.14.0",
+    "aiosqlite>=0.20.0",  # Async SQLite driver
+    "psycopg[binary]>=3.2.0",  # Async + sync PostgreSQL driver
 ]
 dev = [
     "dns-zone-manager[cli,api]",  # Include both extras for development

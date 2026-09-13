@@ -1,6 +1,7 @@
 # DNS Zone Manager Example Environment
 # This docker-compose file sets up a complete environment with:
 # - BIND 9 DNS server with example zones
+# - PostgreSQL storing scheduled changes and the audit log
 # - FastAPI DNS management API (backend)
 # - Nginx serving the Vite frontend (proxies API calls to FastAPI)
 #
@@ -88,6 +89,32 @@ services:
       start_period: 5s
     restart: unless-stopped
 
+  # PostgreSQL - stores scheduled changes and the audit log.
+  # The database starts empty; the API creates its own schema on first start.
+  postgres:
+    image: postgres:17
+    container_name: dns-postgres
+    hostname: postgres
+    environment:
+      - TZ=UTC
+      - POSTGRES_USER=dns_zone_manager
+      - POSTGRES_PASSWORD=demo-postgres-password
+      - POSTGRES_DB=dns_zone_manager
+    volumes:
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "15432:5432"
+    networks:
+      - dns-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dns_zone_manager -d dns_zone_manager"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
   # FastAPI DNS Management API (backend)
   dns-zone-manager:
     build:
@@ -106,6 +133,8 @@ services:
       - dns-network
     depends_on:
       bind:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     # Use dns-zone-manager CLI with config file
     command: ["sh", "-c", "sleep 2 && dns-zone-manager --config /app/config.yaml --host 0.0.0.0 --port 8000"]
@@ -140,3 +169,4 @@ networks:
 
 volumes:
   bind-zones:
+  postgres-data:

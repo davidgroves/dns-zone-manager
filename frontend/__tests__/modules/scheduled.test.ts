@@ -10,6 +10,8 @@ import {
   formatScheduledDisplay,
   localDatetimeToUtcIso,
   parseRecordsText,
+  sourceBadgeClass,
+  sourceLabel,
   utcIsoToLocalDatetime,
   validateScheduleOps,
 } from '../../modules/scheduledHelpers';
@@ -463,6 +465,30 @@ describe('formatAuditDetail', () => {
   });
 });
 
+describe('sourceLabel', () => {
+  it('labels manual changes', () => {
+    expect(sourceLabel('manual')).toBe('Manual');
+  });
+
+  it('labels scheduler changes', () => {
+    expect(sourceLabel('scheduler')).toBe('Scheduled');
+  });
+
+  it('treats a missing source as scheduler', () => {
+    // Changes created before the source column existed have no value
+    expect(sourceLabel(null)).toBe('Scheduled');
+    expect(sourceLabel(undefined)).toBe('Scheduled');
+  });
+});
+
+describe('sourceBadgeClass', () => {
+  it('uses a distinct class per source', () => {
+    expect(sourceBadgeClass('manual')).toBe('source-badge-manual');
+    expect(sourceBadgeClass('scheduler')).toBe('source-badge-scheduler');
+    expect(sourceBadgeClass(undefined)).toBe('source-badge-scheduler');
+  });
+});
+
 function makeScheduledCtx(overrides: Partial<AppState> = {}) {
   const state = createInitialState({});
   Object.assign(state, overrides);
@@ -616,5 +642,68 @@ describe('saveScheduledChange validation', () => {
     await ctx.saveScheduledChange();
 
     expect(toasts).toEqual([{ message: 'Zone is required', type: 'error' }]);
+  });
+});
+
+describe('setScheduledSourceFilter', () => {
+  it('stores the selected source and reloads', async () => {
+    const { ctx } = makeScheduledCtx();
+    let reloads = 0;
+    ctx.loadScheduledChanges = async () => {
+      reloads += 1;
+    };
+
+    ctx.setScheduledSourceFilter('manual');
+
+    expect(ctx.scheduledSourceFilter).toBe('manual');
+    expect(reloads).toBe(1);
+  });
+
+  it('defaults to no source filter', () => {
+    const { ctx } = makeScheduledCtx();
+    expect(ctx.scheduledSourceFilter).toBe('');
+  });
+
+  it('clears the filter when set back to all sources', () => {
+    const { ctx } = makeScheduledCtx({ scheduledSourceFilter: 'manual' });
+    ctx.loadScheduledChanges = async () => {};
+
+    ctx.setScheduledSourceFilter('');
+
+    expect(ctx.scheduledSourceFilter).toBe('');
+  });
+
+  it('widens the status filter to applied so manual changes are visible', () => {
+    // The default filter hides applied changes, which is every manual change
+    const { ctx } = makeScheduledCtx({
+      scheduledStatusFilters: ['draft', 'scheduled', 'failed'],
+    });
+    ctx.loadScheduledChanges = async () => {};
+
+    ctx.setScheduledSourceFilter('manual');
+
+    expect(ctx.scheduledStatusFilters).toEqual(['applied', 'failed']);
+  });
+
+  it('leaves a status filter that already includes applied alone', () => {
+    const { ctx } = makeScheduledCtx({
+      scheduledStatusFilters: ['applied', 'reverted'],
+    });
+    ctx.loadScheduledChanges = async () => {};
+
+    ctx.setScheduledSourceFilter('manual');
+
+    expect(ctx.scheduledStatusFilters).toEqual(['applied', 'reverted']);
+  });
+
+  it('does not touch the status filter for other sources', () => {
+    const { ctx } = makeScheduledCtx({
+      scheduledStatusFilters: ['draft', 'scheduled', 'failed'],
+    });
+    ctx.loadScheduledChanges = async () => {};
+
+    ctx.setScheduledSourceFilter('scheduler');
+
+    expect(ctx.scheduledStatusFilters).toEqual(['draft', 'scheduled', 'failed']);
   });
 });

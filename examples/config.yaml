@@ -68,10 +68,23 @@ notify:
   # Falls back to dns.update_tsig_key if not specified
   # tsig_key: notify-key
 
-# Scheduled changes (SQLite intent store)
+# Persistence for scheduled changes and the audit log.
+# Points at the postgres container by service name. The database starts empty
+# and the schema is created on first start.
+database:
+  backend: postgres
+  auto_migrate: true
+  postgres:
+    host: postgres
+    port: 5432
+    database: dns_zone_manager
+    user: dns_zone_manager
+    password: demo-postgres-password
+    sslmode: disable
+
+# Scheduled changes (intent store; storage configured under 'database' above)
 scheduler:
   enabled: true
-  database_path: /data/scheduler.db
   poll_interval: 10
   max_attempts: 3
   retry_backoff: 60

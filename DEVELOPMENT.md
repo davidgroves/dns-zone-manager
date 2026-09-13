@@ -71,18 +71,83 @@ In Docker, the frontend is served by nginx which proxies API requests to FastAPI
 - `vite.config.ts` — Vite bundler config
 - `package.json` — npm scripts and dependencies
 
-### Scheduled changes (SQLite)
+### Scheduled changes (SQLite or PostgreSQL)
 
-The scheduler stores named/timed change *intent* in SQLite (never zone state). In the
-devcontainer this defaults to `.tmp/scheduler.db` (see
-`.devcontainer/config.devcontainer.yaml`). For production, set
-`scheduler.database_path` to a durable volume and include that file in backups.
+The scheduler stores named/timed change *intent* and the audit log in a database
+(never zone state). Choose the backend with `database.backend`; the schema is
+created on first start either way, so an empty database is all that is needed.
 
 ```yaml
+# A local file — no external service
+database:
+  backend: sqlite
+  path: /var/lib/dns-zone-manager/scheduler.db
+
 scheduler:
   enabled: true
-  database_path: /var/lib/dns-zone-manager/scheduler.db
 ```
+
+```yaml
+# An external server — durable, and shareable by several instances
+database:
+  backend: postgres
+  postgres:
+    host: postgres
+    port: 5432
+    database: dns_zone_manager
+    user: dns_zone_manager
+    password: change-me
+    sslmode: require
+```
+
+The devcontainer uses PostgreSQL, running as a sibling container reachable at
+hostname `postgres` (see `.devcontainer/config.devcontainer.yaml`). Its data
+lives in tmpfs, so every restart starts from an empty database and re-exercises
+schema creation. Inspect it with:
+
+```bash
+psql postgresql://dns_zone_manager:devpassword@postgres:5432/dns_zone_manager
+# From the host instead: localhost:15432
+```
+
+To develop against SQLite, replace the `database` section with the SQLite form
+above pointing at `.tmp/scheduler.db`.
+
+#### Backups
+
+This database is the only persistent state in the system, and it cannot be
+rebuilt from DNS. Zone data does not need backing up (DNS is the source of
+truth), but pending changes and the audit trail do.
+
+```bash
+# PostgreSQL
+pg_dump --format=custom --file=scheduler-$(date +%F).dump \
+  postgresql://dns_zone_manager@db:5432/dns_zone_manager
+pg_restore --clean --if-exists --dbname=postgresql://... scheduler-2026-01-01.dump
+
+# SQLite (safe while running, unlike a plain file copy)
+sqlite3 /var/lib/dns-zone-manager/scheduler.db ".backup scheduler-$(date +%F).db"
+```
+
+#### Schema migrations
+
+Alembic owns the schema and ships inside the package. The application runs
+`alembic upgrade head` at startup unless `database.auto_migrate` is false. To
+work with migrations directly, point Alembic at your config file:
+
+```bash
+export DNS_ZONE_MANAGER_CONFIG_FILE=.devcontainer/config.devcontainer.yaml
+
+uv run alembic current                          # Which revision is applied
+uv run alembic check                            # Does the schema match the models?
+uv run alembic upgrade head                     # Apply pending migrations
+uv run alembic downgrade -1                     # Roll back one revision
+uv run alembic revision --autogenerate -m "add x"   # Generate a new revision
+```
+
+After changing `backend/src/dns_zone_manager/scheduler/schema.py`, generate a
+revision and review it — autogenerate does not always get types or indexes
+right. `alembic check` fails when the models and migrations have drifted apart.
 
 API: `POST/GET/PATCH/DELETE /v1/scheduled-changes`, plus `/apply`, `/preview`,
 `/revert-preview`, and `/revert`. Applied changes with pre-apply snapshots can be

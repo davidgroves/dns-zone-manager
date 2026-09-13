@@ -18,6 +18,10 @@ ChangeStatus = Literal[
     "reverted",
 ]
 
+# Where a change record originated: created in the scheduler, or auto-recorded
+# from a direct DNS write so that it is linkable from notifications.
+ChangeSource = Literal["scheduler", "manual"]
+
 PrereqTypeLiteral = Literal["nxdomain", "yxdomain", "nxrrset", "yxrrset"]
 
 
@@ -191,6 +195,10 @@ class ScheduledChangeResponse(BaseModel):
     description: str | None = None
     zone: str
     status: ChangeStatus
+    source: ChangeSource = Field(
+        default="scheduler",
+        description="Origin: created in the scheduler, or auto-recorded from a direct write",
+    )
     scheduled_at: datetime | None = None
     not_valid_after: datetime | None = None
     auto_prerequisites: bool

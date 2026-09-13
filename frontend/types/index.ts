@@ -102,12 +102,16 @@ export interface AuditEvent {
   change_status: ChangeStatus;
 }
 
+/** Where a change record came from: the scheduler, or a direct DNS write. */
+export type ChangeSource = 'scheduler' | 'manual';
+
 export interface ScheduledChange {
   id: string;
   name: string;
   description: string | null;
   zone: string;
   status: ChangeStatus;
+  source?: ChangeSource;
   scheduled_at: string | null;
   not_valid_after: string | null;
   auto_prerequisites: boolean;
@@ -362,6 +366,13 @@ export interface AppState {
   currentUser: string | null;
   appVersion: string;
 
+  // Branding / theme
+  appName: string;
+  logoUrl: string | null;
+  logoAlt: string;
+  themeMode: 'dark' | 'light';
+  allowModeToggle: boolean;
+
   // UI state
   loadingZones: boolean;
   loadingRecords: boolean;
@@ -454,6 +465,8 @@ export interface AppState {
   selectedScheduledChange: ScheduledChange | null;
   scheduledStatusFilters: ChangeStatus[];
   showScheduledStatusMenu: boolean;
+  /** Empty string means both scheduler and manual changes. */
+  scheduledSourceFilter: ChangeSource | '';
   showRevertModal: boolean;
   revertPreview: RevertPreview | null;
 
@@ -508,10 +521,30 @@ export interface AppState {
 }
 
 // Config passed at init or fetched from /ui/config API
+export type ThemeMode = 'dark' | 'light' | 'auto';
+
+/** CSS custom-property name → colour value (only overridden tokens). */
+export type ThemePalette = Record<string, string>;
+
+export interface ThemeLogo {
+  url: string;
+  alt: string;
+}
+
+export interface ThemeConfig {
+  appName?: string;
+  defaultMode?: ThemeMode;
+  allowModeToggle?: boolean;
+  logo?: ThemeLogo | null;
+  light?: ThemePalette;
+  dark?: ThemePalette;
+}
+
 export interface AppConfig {
   azureEnabled?: boolean;
   proxyAuthEnabled?: boolean;
   version?: string;
+  theme?: ThemeConfig;
 }
 
 // Route parameters for URL-based navigation

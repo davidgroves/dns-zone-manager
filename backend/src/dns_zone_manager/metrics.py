@@ -132,3 +132,54 @@ scheduled_change_lateness_seconds = Histogram(
     "Seconds between scheduled_at and actual application",
     buckets=(1, 5, 15, 30, 60, 120, 300, 600, 1800, 3600),
 )
+
+# Scheduled change store (database) metrics
+store_operation_duration_seconds = Histogram(
+    "dns_zone_manager_store_operation_duration_seconds",
+    "Duration of scheduled change store transactions",
+    ["operation", "backend"],  # backend: sqlite, postgres
+    buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 5),
+)
+
+store_errors_total = Counter(
+    "dns_zone_manager_store_errors_total",
+    "Total number of scheduled change store transactions that failed",
+    ["operation", "backend"],
+)
+
+# Outbound webhook metrics
+webhook_deliveries_total = Counter(
+    "dns_zone_manager_webhook_deliveries_total",
+    "Total number of webhook delivery attempts by outcome",
+    ["target", "outcome"],  # outcome: success, http_error, transport_error, exhausted
+)
+
+webhook_delivery_duration_seconds = Histogram(
+    "dns_zone_manager_webhook_delivery_duration_seconds",
+    "Duration of webhook delivery requests",
+    ["target"],
+    buckets=(0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30),
+)
+
+webhook_queue_dropped_total = Counter(
+    "dns_zone_manager_webhook_queue_dropped_total",
+    "Total number of change events dropped because the webhook queue was full",
+)
+
+webhook_queue_depth = Gauge(
+    "dns_zone_manager_webhook_queue_depth",
+    "Current number of change events waiting for webhook delivery",
+)
+
+webhook_autorecorded_changes_total = Counter(
+    "dns_zone_manager_webhook_autorecorded_changes_total",
+    "Total number of manual changes auto-recorded in the scheduler store",
+    ["outcome"],  # recorded, failed, skipped
+)
+
+# UI branding metrics
+ui_logo_requests_total = Counter(
+    "dns_zone_manager_ui_logo_requests_total",
+    "Total number of GET /ui/logo requests",
+    ["outcome"],  # served, not_configured
+)

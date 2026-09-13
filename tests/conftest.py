@@ -75,6 +75,27 @@ def pytest_unconfigure(config):
         _test_config_path = None
 
 
+@pytest.fixture(autouse=True)
+def _baseline_config_file():
+    """Point the app back at the shared test config after every test.
+
+    Several fixtures and tests aim the module-level config pointer at a temp
+    file of their own — the whole integration suite does it for every test —
+    and then delete that file on teardown without restoring the pointer. The
+    next test to call get_settings() then dies with FileNotFoundError, and
+    which test that is depends on collection order, so the failure lands far
+    from its cause. Repairing it here keeps the suites independent of the
+    order they run in.
+    """
+    yield
+
+    from dns_zone_manager.config import get_config_file, set_config_file
+
+    if get_config_file() != _test_config_path:
+        # Also clears the settings cache.
+        set_config_file(_test_config_path)
+
+
 @pytest.fixture
 def test_api_key() -> str:
     """Get the test API key."""

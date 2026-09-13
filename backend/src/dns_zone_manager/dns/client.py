@@ -2,6 +2,7 @@
 
 import logging
 import socket
+import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
@@ -23,9 +24,21 @@ import dns.zone
 from dns.exception import DNSException
 
 from dns_zone_manager.logging import log_internal_event
+from dns_zone_manager.notifications.context import (
+    TRIGGER_MANUAL,
+    ChangeContext,
+    get_change_context,
+)
+from dns_zone_manager.notifications.events import (
+    EVENT_CHANGE_APPLIED,
+    EVENT_CHANGE_FAILED,
+    DnsChangeEvent,
+    operations_from_update,
+)
 
 if TYPE_CHECKING:
     from dns_zone_manager.config import Settings
+    from dns_zone_manager.notifications.dispatcher import WebhookDispatcher
 
 logger = logging.getLogger(__name__)
 
@@ -151,12 +164,18 @@ class IXFRResult:
 class DNSClient:
     """Client for DNS operations using dnspython."""
 
-    def __init__(self, settings: "Settings"):
+    def __init__(
+        self,
+        settings: "Settings",
+        dispatcher: "WebhookDispatcher | None" = None,
+    ):
         """Initialize DNS client with settings.
 
         Args:
             settings: Application settings containing DNS server and TSIG config
+            dispatcher: Optional webhook dispatcher notified of every change
         """
+        self.dispatcher = dispatcher
         # Configuration may specify a hostname (e.g. a Docker service name);
         # dnspython requires an IP, so resolve it once at construction time.
         self.server_host = settings.dns.server
@@ -710,6 +729,51 @@ class DNSClient:
 
         self._send_update(update, zone)
 
+    def _emit_change_event(
+        self,
+        update: dns.update.Update,
+        zone: str,
+        *,
+        event: str,
+        rcode: str | None = None,
+        error: str | None = None,
+    ) -> None:
+        """Notify the webhook dispatcher about a committed or failed change.
+
+        Every DNS write reaches this point, so this is the single place change
+        notifications originate. Attribution comes from the task-scoped change
+        context; when no change ID is present the write did not come from the
+        scheduler, so an ID is minted here for the dispatcher to persist.
+
+        Never raises: notification problems must not fail a DNS update.
+        """
+        if self.dispatcher is None:
+            return
+        try:
+            context = get_change_context() or ChangeContext()
+            change_id = context.change_id or str(uuid.uuid4())
+            self.dispatcher.emit(
+                DnsChangeEvent(
+                    event=event,
+                    zone=zone,
+                    operations=operations_from_update(update),
+                    trigger=context.trigger or TRIGGER_MANUAL,
+                    actor=context.actor,
+                    actor_name=context.actor_name,
+                    actor_email=context.actor_email,
+                    auth_type=context.auth_type,
+                    change_id=change_id,
+                    change_name=context.change_name,
+                    request_id=context.request_id,
+                    server=self.server_host,
+                    rcode=rcode,
+                    error=error,
+                    autorecord=context.change_id is None,
+                )
+            )
+        except Exception as e:
+            logger.warning("Failed to emit DNS change event for %s: %s", zone, e)
+
     def _send_update(self, update: dns.update.Update, zone: str) -> None:
         """Send a DDNS update to the server.
 
@@ -738,6 +802,12 @@ class DNSClient:
                     zone=zone,
                     server=self.server,
                 )
+                self._emit_change_event(
+                    update,
+                    zone,
+                    event=EVENT_CHANGE_APPLIED,
+                    rcode="NOERROR",
+                )
                 return
 
             rcode_text = dns.rcode.to_text(rcode)
@@ -756,6 +826,13 @@ class DNSClient:
                     zone=zone,
                     rcode=rcode_text,
                 )
+                self._emit_change_event(
+                    update,
+                    zone,
+                    event=EVENT_CHANGE_FAILED,
+                    rcode=rcode_text,
+                    error=f"Prerequisite failed: {rcode_text}",
+                )
                 raise PrerequisiteFailedError(
                     f"Prerequisite failed: {rcode_text} - DNS state may have changed",
                     rcode=rcode,
@@ -770,6 +847,13 @@ class DNSClient:
                 zone=zone,
                 rcode=rcode_text,
             )
+            self._emit_change_event(
+                update,
+                zone,
+                event=EVENT_CHANGE_FAILED,
+                rcode=rcode_text,
+                error=f"Update failed with rcode {rcode_text}",
+            )
             raise UpdateError(f"Update failed with rcode {rcode_text}")
 
         except DNSException as e:
@@ -781,6 +865,12 @@ class DNSClient:
                 level="ERROR",
                 zone=zone,
                 error=str(e),
+            )
+            self._emit_change_event(
+                update,
+                zone,
+                event=EVENT_CHANGE_FAILED,
+                error=f"Update failed: {e}",
             )
             raise UpdateError(f"Update failed: {e}") from e
 

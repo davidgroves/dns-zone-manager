@@ -171,6 +171,7 @@ type RouterMethodContext = AppState & {
   openScheduledView: () => void;
   openAuditView: () => void;
   openScheduledChangeById: (id: string) => Promise<void>;
+  updateUrlFromState: () => void;
 };
 
 /**
@@ -259,6 +260,20 @@ export function createRouterMethods(_state: AppState) {
      */
     updateUrlFromState(this: RouterMethodContext) {
       syncUrlFromState(this);
+    },
+
+    /**
+     * Return to the zone list home view (clears zone, search, and panel views).
+     */
+    async goHome(this: RouterMethodContext) {
+      this.selectedZone = null;
+      this.records = [];
+      this.showScheduledView = false;
+      this.showAuditView = false;
+      this.selectedScheduledChange = null;
+      this.clearSearch();
+      await this.loadZones(null, true);
+      this.updateUrlFromState();
     },
   };
 }

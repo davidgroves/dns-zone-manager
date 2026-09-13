@@ -165,17 +165,47 @@ Benefits of treating DNS as the source of truth:
 
 ### Intent Versus State: Scheduled Changes
 
-Zone **state** (what records exist now) still lives only in DNS. Named, time-scheduled changes are **intent** (what to do later) — they have no representation in a zone until they execute. For that reason the scheduler persists intent in a local SQLite file:
+Zone **state** (what records exist now) still lives only in DNS. Named, time-scheduled changes are **intent** (what to do later) — they have no representation in a zone until they execute. For that reason the scheduler persists intent in a database:
 
-| Stored in SQLite | Still only in DNS |
-|------------------|-------------------|
+| Stored in the database | Still only in DNS |
+|------------------------|-------------------|
 | Change name, schedule, expiry | Current RRsets |
 | Operations and prerequisites | Serial / SOA |
 | Audit trail of apply/fail | Authoritative answers |
 
-SQLite is never used as a dual source of truth for zone contents. After a change applies, the authoritative result is whatever the DNS server accepted via DDNS; the cache is refreshed from DNS as usual.
+The database is never used as a dual source of truth for zone contents. After a change applies, the authoritative result is whatever the DNS server accepted via DDNS; the cache is refreshed from DNS as usual.
 
 Applied changes can later be **reverted** if a pre-apply snapshot was captured. At apply time the executor records prior RRset state (`prior_ttl` / `prior_records` / `snapshot_at`) for each operation. Revert builds inverse ADD/DELETE operations and sends them immediately; status becomes terminal `reverted`. Changes applied before snapshot support (missing `snapshot_at`) cannot be reverted.
+
+### Storage Backends
+
+The store runs on either SQLite or PostgreSQL, selected by `database.backend`. This is the only persistent state in the system, so the choice is about how durable and how shared that state needs to be — not about zone data.
+
+```
+config.database ──> scheduler/engine.py ──> AsyncEngine ──┬──> sqlite+aiosqlite
+                                                          └──> postgresql+psycopg
+                            │
+scheduler/schema.py  (one MetaData definition, both dialects)
+                            │
+scheduler/migrations/ (Alembic) ──> alembic upgrade head at startup
+                            │
+scheduler/store.py   (SQLAlchemy Core expressions, no dialect-specific SQL)
+```
+
+One schema definition in `scheduler/schema.py` drives both backends. Where the dialects genuinely differ, the type layer absorbs it:
+
+| Concept | PostgreSQL | SQLite |
+|---------|-----------|--------|
+| Timestamps | `timestamptz` | ISO-8601 UTC text, which sorts chronologically |
+| JSON columns | `jsonb` | Serialised text |
+| Event surrogate key | `bigserial` | `INTEGER` rowid alias |
+| Booleans | `boolean` | `0` / `1` |
+
+The one place the store adapts its SQL is claiming due changes. On PostgreSQL the candidate row is selected `FOR UPDATE SKIP LOCKED`, so several application instances can poll one database without either blocking each other or double-claiming a change. SQLite databases are not shared, so the clause is omitted.
+
+Schema creation and upgrades are handled by Alembic, packaged inside the distribution so migrations ship with the image. At startup the application runs `alembic upgrade head`, which means pointing it at an empty database is enough to get a working schema. On PostgreSQL the upgrade is wrapped in an advisory lock (`pg_advisory_lock`) so instances starting simultaneously serialise their DDL instead of racing. Set `database.auto_migrate: false` to apply migrations out of band instead; startup then fails with a clear error if the schema is absent.
+
+Within a process, transactions are serialised by a re-entrant lock and owned by the outermost store method. Store methods therefore compose (`create()` calls `get()`) while each remaining atomic: a method that fails partway through leaves nothing behind.
 
 ### The Cache is Not a Source of Truth
 
@@ -224,6 +254,7 @@ The Python backend provides:
 - **DDNS Client** — Sends RFC 2136 updates with TSIG authentication
 - **Zone Cache** — In-memory cache populated via AXFR
 - **Catalog Zone Support** — Auto-discovery of zones via RFC 9432
+- **Webhook Dispatcher** — Notifies Slack, Teams, or JSON endpoints when a change is committed
 
 ```mermaid
 flowchart TB
@@ -241,6 +272,7 @@ flowchart TB
             DC[DNS Client]
             ZC[Zone Cache]
             CI[Catalog Indexer]
+            WD[Webhook Dispatcher]
         end
         
         subgraph "Auth"
@@ -252,6 +284,7 @@ flowchart TB
     R1 & R2 & R3 & R4 & R5 & R6 --> DC
     R1 & R2 & R3 --> ZC
     CI --> ZC
+    DC --> WD
     
     AK & AZ --> R1 & R2 & R3 & R4 & R5 & R6
 ```
@@ -358,6 +391,44 @@ sequenceDiagram
 The same builder is used for **scheduled changes** (`POST /v1/scheduled-changes`). A named change can be applied immediately or when a background scheduler claims it after `scheduled_at`. Explicit DNS prerequisites (NXDOMAIN / YXDOMAIN / NXRRSET / YXRRSET) and auto-derived prerequisites are attached to the same UPDATE message so the check and write stay atomic.
 
 Statuses include `draft`, `scheduled`, `running`, `applied`, `failed`, `cancelled`, `expired`, and `reverted`. `POST /v1/scheduled-changes/{id}/revert` undoes an `applied` change using snapshots taken at apply time; `GET .../revert-preview` shows the inverse operations and a warning that only that change is undone.
+
+### Change Notifications
+
+Every DNS write in the system funnels through one method, `DNSClient._send_update()`, which is where notifications are emitted. Hooking the single commit point rather than each of the eight API write paths means a new endpoint cannot silently skip notifying, and no path can notify twice.
+
+That one hook does not know *who* asked for the write, because `_send_update()` only receives a DNS message. Attribution travels out of band in a `ContextVar`: the authentication dependency records the caller for API requests, and the scheduler executor records the change it is applying. Since every request handler and every scheduler task runs in its own asyncio context, concurrent writes cannot read each other's attribution.
+
+```mermaid
+sequenceDiagram
+    participant Caller
+    participant Auth as Auth / Scheduler
+    participant Client as DNSClient
+    participant DNS
+    participant Queue as Webhook queue
+    participant Worker
+    participant Store as Scheduler store
+    participant Target as Slack / Teams / HTTP
+
+    Caller->>Auth: Request
+    Auth->>Auth: Set actor + trigger in ContextVar
+    Auth->>Client: Write records
+    Client->>DNS: DDNS UPDATE + TSIG
+    DNS-->>Client: NOERROR / error rcode
+    Client->>Queue: emit(event) — never blocks
+    Client-->>Caller: Response
+
+    Worker->>Queue: Dequeue event
+    opt Manual change, autorecord enabled
+        Worker->>Store: Record as already-applied
+    end
+    Worker->>Target: POST payload (retried with backoff)
+```
+
+Delivery is deliberately decoupled: `emit()` only puts the event on a bounded in-memory queue, and a single background worker performs the SQLite write and HTTP requests. A slow, failing, or unreachable webhook endpoint therefore cannot delay a DNS write or turn a successful change into an API error. When the queue is full, events are dropped and counted rather than applying backpressure to DNS.
+
+The notification's link is the part that needs the scheduler store. A scheduled change already has a record to point at, so its notification links to itself. A manual record edit has nothing, so the worker records it in the store as an already-applied change with `source = 'manual'`, which both gives the link a destination and makes manual changes browsable alongside scheduled ones. These records describe what was already committed to DNS, so they are history rather than intent — they carry no pre-apply snapshot and cannot be reverted. If that write fails, the notification falls back to linking to the zone rather than to a change that does not exist.
+
+Operations are recovered from the DNS UPDATE message itself rather than passed down from the call sites, by reading each RRset's delete class (absent for adds, `NONE` for specific-record deletes, `ANY` for whole-RRset deletes). A `replace` arrives as a delete-`ANY` immediately followed by an add for the same name and type, and those pairs are coalesced back into a single `replace` so notifications describe the intent rather than the wire encoding.
 
 ## Consistency Model
 

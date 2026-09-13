@@ -26,6 +26,7 @@ export default defineConfig(({ command }) => {
       // Proxy API requests to local FastAPI server
       proxy: {
         '/ui/config': 'http://localhost:8000',
+        '/ui/logo': 'http://localhost:8000',
         '/health': 'http://localhost:8000',
         '/metrics': 'http://localhost:8000',
         '/v1': 'http://localhost:8000',

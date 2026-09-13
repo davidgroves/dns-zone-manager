@@ -4,11 +4,12 @@ FROM mcr.microsoft.com/devcontainers/python:3-3.13-bookworm
 # Remove expired yarn repo before apt-get update
 RUN rm -f /etc/apt/sources.list.d/yarn.list || true
 
-# DNS tools for dig, nsupdate, rndc
+# DNS tools for dig, nsupdate, rndc; psql for the scheduled change store
 RUN apt-get update && apt-get install -y --no-install-recommends \
     bind9-dnsutils \
     bind9-host \
     bind9utils \
+    postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 # Node.js 22
@@ -29,10 +30,10 @@ RUN npm ci --ignore-scripts \
     && rm -rf /tmp/playwright-install /root/.npm
 WORKDIR /
 
-# Docker CLI (for viewing sibling container logs)
+# Docker CLI + Compose plugin (for sibling containers and `docker compose`)
 RUN curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian bookworm stable" > /etc/apt/sources.list.d/docker.list \
-    && apt-get update && apt-get install -y --no-install-recommends docker-ce-cli \
+    && apt-get update && apt-get install -y --no-install-recommends docker-ce-cli docker-compose-plugin \
     && rm -rf /var/lib/apt/lists/*
 
 # uv package manager

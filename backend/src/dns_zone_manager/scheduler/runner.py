@@ -34,8 +34,9 @@ async def run_scheduler_loop(
 ) -> None:
     """Poll for due scheduled changes and execute them.
 
-    Runs until cancelled. Safe to run in multiple workers thanks to
-    SQLite lease claiming.
+    Runs until cancelled. Safe to run in multiple workers thanks to lease
+    claiming; on PostgreSQL the claim also skips rows locked by another
+    instance, so several application instances can share one database.
     """
     owner = _lease_owner_id()
     log_internal_event(
@@ -43,7 +44,7 @@ async def run_scheduler_loop(
         logger,
         lease_owner=owner,
         poll_interval=settings.poll_interval,
-        database_path=str(settings.database_path),
+        database_backend=store.backend,
     )
 
     try:

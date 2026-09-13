@@ -303,6 +303,24 @@ export function canRevertChange(change: {
 }
 
 /**
+ * Label for where a change record came from.
+ *
+ * Direct DNS writes (record edits, atomic updates, nsupdate) are recorded
+ * here as already-applied changes so notifications can link to them, so the
+ * list mixes both origins.
+ */
+export function sourceLabel(source: string | null | undefined): string {
+  return source === 'manual' ? 'Manual' : 'Scheduled';
+}
+
+/**
+ * Badge CSS class for a change's source.
+ */
+export function sourceBadgeClass(source: string | null | undefined): string {
+  return source === 'manual' ? 'source-badge-manual' : 'source-badge-scheduler';
+}
+
+/**
  * One-line human summary of an audit event's detail payload.
  */
 export function formatAuditDetail(event: {

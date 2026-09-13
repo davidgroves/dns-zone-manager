@@ -4,6 +4,53 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DNS Zone Editor</title>
+    <script>
+        // Pre-paint theme apply from localStorage to avoid a flash of the wrong mode.
+        (function () {
+            try {
+                var modeKey = 'dns-zone-manager.themeMode';
+                var themeKey = 'dns-zone-manager.theme';
+                var stored = localStorage.getItem(modeKey);
+                var mode = stored;
+                var cached = null;
+                try { cached = JSON.parse(localStorage.getItem(themeKey) || 'null'); } catch (e) {}
+                if (mode !== 'dark' && mode !== 'light') {
+                    var def = (cached && cached.defaultMode) || 'dark';
+                    if (def === 'light' || def === 'dark') {
+                        mode = def;
+                    } else {
+                        mode = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
+                            ? 'dark' : 'light';
+                    }
+                }
+                document.documentElement.setAttribute('data-theme', mode);
+                if (cached && cached.appName) {
+                    document.title = cached.appName;
+                }
+                if (cached && ((cached.dark && Object.keys(cached.dark).length) ||
+                               (cached.light && Object.keys(cached.light).length))) {
+                    var css = '';
+                    function block(sel, palette) {
+                        if (!palette) return '';
+                        var decls = Object.keys(palette).map(function (k) {
+                            return '  ' + k + ': ' + palette[k] + ';';
+                        }).join('\n');
+                        return decls ? sel + ' {\n' + decls + '\n}\n' : '';
+                    }
+                    css += block(':root[data-theme="dark"]', cached.dark);
+                    css += block(':root[data-theme="light"]', cached.light);
+                    if (css) {
+                        var style = document.createElement('style');
+                        style.id = 'theme-overrides';
+                        style.textContent = css;
+                        document.head.appendChild(style);
+                    }
+                }
+            } catch (e) {
+                document.documentElement.setAttribute('data-theme', 'dark');
+            }
+        })();
+    </script>
     <script type="module" src="/main.ts"></script>
 </head>
 <body x-data="app()" x-init="init()">
@@ -11,7 +58,12 @@
     <template x-if="!authenticated">
         <div class="login-container">
             <div class="login-card">
-                <h1>🌐 DNS Zone Editor</h1>
+                <h1>
+                    <template x-if="logoUrl">
+                        <img :src="logoUrl" :alt="logoAlt" class="home-logo" style="width: 32px; height: 32px; vertical-align: middle; margin-right: 0.5rem;">
+                    </template>
+                    <span x-text="appName"></span>
+                </h1>
                 <p>Sign in to manage DNS records</p>
                 
                 <template x-if="azureEnabled">
@@ -33,6 +85,13 @@
                 </button>
                 
                 <p x-show="loginError" class="text-danger mt-2" x-text="loginError"></p>
+
+                <div x-show="allowModeToggle" style="margin-top: 1.25rem; text-align: center;">
+                    <button @click="toggleThemeMode()" class="btn btn-ghost btn-sm" type="button"
+                            :title="themeMode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'">
+                        <span x-text="themeMode === 'dark' ? 'Light mode' : 'Dark mode'"></span>
+                    </button>
+                </div>
             </div>
         </div>
     </template>
@@ -43,13 +102,22 @@
             <!-- Sidebar -->
             <aside class="sidebar">
                 <div class="sidebar-header">
-                    <h1 :title="appVersion ? 'Version: ' + appVersion : ''">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <circle cx="12" cy="12" r="10"/>
-                            <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
-                        </svg>
-                        DNS Zones
-                    </h1>
+                    <button type="button" class="home-button" @click="goHome()"
+                            :title="appVersion ? (appName + ' — Version: ' + appVersion) : appName"
+                            data-testid="home-button">
+                        <h1>
+                            <template x-if="logoUrl">
+                                <img :src="logoUrl" :alt="logoAlt" class="home-logo">
+                            </template>
+                            <template x-if="!logoUrl">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                    <circle cx="12" cy="12" r="10"/>
+                                    <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                                </svg>
+                            </template>
+                            <span class="app-name" x-text="appName"></span>
+                        </h1>
+                    </button>
                 </div>
                 
                 <!-- Catalog Status -->
@@ -273,6 +341,18 @@
                         
                         <span x-show="currentUser" class="text-muted" x-text="currentUser" :title="'Signed in as ' + currentUser"></span>
 
+                        <button x-show="allowModeToggle" @click="toggleThemeMode()" class="btn btn-ghost btn-icon"
+                                type="button" data-testid="theme-toggle"
+                                :title="themeMode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'">
+                            <svg x-show="themeMode === 'dark'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                <circle cx="12" cy="12" r="5"/>
+                                <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+                            </svg>
+                            <svg x-show="themeMode === 'light'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                            </svg>
+                        </button>
+
                         <button @click="logout()" class="btn btn-ghost btn-logout" title="Logout">
                             Logout
                         </button>
@@ -315,6 +395,17 @@
                                             </template>
                                         </div>
                                     </div>
+                                    <div class="source-filter" role="group" aria-label="Filter by change source">
+                                        <button type="button" class="btn btn-ghost btn-sm"
+                                                :class="{ 'btn-active': scheduledSourceFilter === '' }"
+                                                @click="setScheduledSourceFilter('')">All sources</button>
+                                        <button type="button" class="btn btn-ghost btn-sm"
+                                                :class="{ 'btn-active': scheduledSourceFilter === 'scheduler' }"
+                                                @click="setScheduledSourceFilter('scheduler')">Scheduled</button>
+                                        <button type="button" class="btn btn-ghost btn-sm"
+                                                :class="{ 'btn-active': scheduledSourceFilter === 'manual' }"
+                                                @click="setScheduledSourceFilter('manual')">Manual</button>
+                                    </div>
                                     <button @click="openNewScheduledChange()" class="btn btn-primary btn-sm" :disabled="saving">New</button>
                                     <button @click="loadScheduledChanges()" class="btn btn-ghost btn-sm" :disabled="scheduledLoading">Refresh</button>
                                     <button @click="closeScheduledView()" class="btn btn-ghost btn-sm">Close</button>
@@ -339,6 +430,7 @@
                                         <div class="card-body">
                                             <p>
                                                 <span class="status-badge" :class="statusBadgeClass(selectedScheduledChange.status)" x-text="selectedScheduledChange.status"></span>
+                                                <span class="source-badge" :class="sourceBadgeClass(selectedScheduledChange.source)" x-text="sourceLabel(selectedScheduledChange.source)"></span>
                                                 <span class="text-muted" x-text="' · ' + selectedScheduledChange.zone"></span>
                                                 <span class="text-muted text-sm" x-show="selectedScheduledChange.applied_at"
                                                       x-text="' · applied ' + formatScheduledDisplay(selectedScheduledChange.applied_at)"></span>
@@ -450,6 +542,7 @@
                                                 <th>Name</th>
                                                 <th>Zone</th>
                                                 <th>Status</th>
+                                                <th>Source</th>
                                                 <th>Scheduled</th>
                                                 <th>Ops</th>
                                                 <th></th>
@@ -464,8 +557,9 @@
                                                     </td>
                                                     <td x-text="chg.zone.replace(/\.$/, '')"></td>
                                                     <td><span class="status-badge" :class="statusBadgeClass(chg.status)" x-text="chg.status"></span></td>
+                                                    <td><span class="source-badge" :class="sourceBadgeClass(chg.source)" x-text="sourceLabel(chg.source)"></span></td>
                                                     <td class="text-sm" x-text="formatScheduledDisplay(chg.scheduled_at)"></td>
-                                                    <td x-text="chg.operations.length"></td>
+                                                    <td class="scheduled-ops" x-text="chg.operations.length"></td>
                                                     <td class="scheduled-actions">
                                                         <span class="scheduled-primary-action">
                                                             <template x-if="isChangeEditable(chg.status)">
@@ -1721,7 +1815,7 @@ send"></textarea>
 
                             <!-- Rollback Preview Section -->
                             <template x-if="rollbackTargetSerial">
-                                <div class="rollback-preview" style="margin-top: 1.5rem; padding: 1rem; border: 2px solid var(--warning); border-radius: 0.5rem; background: var(--warning-subtle, rgba(255, 193, 7, 0.1));">
+                                <div class="rollback-preview" style="margin-top: 1.5rem; padding: 1rem; border: 2px solid var(--warning); border-radius: 0.5rem; background: var(--warning-subtle);">
                                     <h4 style="margin: 0 0 1rem 0; display: flex; align-items: center; gap: 0.5rem;">
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
                                             <path d="M1 4v6h6"/>
@@ -1940,20 +2034,20 @@ send"></textarea>
         }
         
         .history-add {
-            background: rgba(46, 204, 113, 0.1);
+            background: var(--accent-success-soft);
         }
         
         .history-delete {
-            background: rgba(231, 76, 60, 0.1);
+            background: var(--accent-danger-soft);
         }
         
         .badge-success {
-            background: var(--success, #2ecc71);
+            background: var(--success);
             color: white;
         }
         
         .badge-danger {
-            background: var(--danger, #e74c3c);
+            background: var(--danger);
             color: white;
         }
         
@@ -1964,36 +2058,36 @@ send"></textarea>
         }
         
         .alert-warning {
-            background: rgba(255, 193, 7, 0.15);
-            border: 1px solid rgba(255, 193, 7, 0.3);
+            background: var(--accent-warning-soft);
+            border: 1px solid var(--accent-warning-border);
             color: var(--text-primary);
         }
         
         .alert-info {
-            background: rgba(52, 152, 219, 0.15);
-            border: 1px solid rgba(52, 152, 219, 0.3);
+            background: var(--accent-primary-soft);
+            border: 1px solid var(--accent-primary-border);
             color: var(--text-primary);
         }
         
         .btn-warning {
-            background: var(--warning, #f39c12);
-            color: white;
+            background: var(--warning);
+            color: var(--btn-on-warning);
             border: none;
         }
         
         .btn-warning:hover {
-            background: #e08e0b;
+            background: var(--accent-warning-hover);
         }
         
         .btn-warning.btn-ghost {
             background: transparent;
-            color: var(--warning, #f39c12);
-            border: 1px solid var(--warning, #f39c12);
+            color: var(--warning);
+            border: 1px solid var(--warning);
         }
         
         .btn-warning.btn-ghost:hover {
-            background: var(--warning, #f39c12);
-            color: white;
+            background: var(--warning);
+            color: var(--btn-on-warning);
         }
         
         /* x-collapse transition helper */

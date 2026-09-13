@@ -24,7 +24,7 @@ except ImportError:
             CatZoneIndexConfig,
         )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from dns_zone_manager import __version__
@@ -33,8 +33,10 @@ from dns_zone_manager.dns.cache import ZoneCache
 from dns_zone_manager.dns.client import DNSClient, DNSClientError, ZoneTransferError
 from dns_zone_manager.dns.notify import NotifyListener
 from dns_zone_manager.logging import configure_logging, log_internal_event
+from dns_zone_manager.metrics import ui_logo_requests_total
 from dns_zone_manager.middleware import WideEventMiddleware, enrich_error_context
 from dns_zone_manager.models.requests import ErrorResponse
+from dns_zone_manager.notifications.dispatcher import WebhookDispatcher
 from dns_zone_manager.routers import (
     atomic,
     auth,
@@ -64,6 +66,7 @@ zone_cache: ZoneCache | None = None
 catalog_indexer: Any = None  # CatZoneIndex | None when catalog_zone_indexer is available
 notify_listener: NotifyListener | None = None
 scheduled_store: ScheduledChangeStore | None = None
+webhook_dispatcher: WebhookDispatcher | None = None
 
 
 async def _sync_catalog_zones() -> None:
@@ -262,6 +265,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     cleans up on shutdown.
     """
     global dns_client, zone_cache, catalog_indexer, notify_listener, scheduled_store
+    global webhook_dispatcher
 
     settings = get_settings()
 
@@ -279,13 +283,26 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         notify_enabled=settings.notify.enabled,
         notify_prefer_ixfr=settings.notify.prefer_ixfr,
         scheduler_enabled=settings.scheduler.enabled,
+        database_backend=settings.database.backend,
+        webhooks_enabled=settings.webhooks.enabled,
+        webhook_targets=len(settings.webhooks.targets),
+        theme_default_mode=settings.theme.default_mode,
+        theme_logo_configured=settings.theme.logo is not None,
+        theme_colour_overrides=settings.theme.override_count(),
         log_format=settings.logging.format,
         log_level=settings.logging.level,
     )
 
+    # Create the webhook dispatcher before the DNS client so every DNS write
+    # can notify it. Its store reference is attached once the scheduler store
+    # is open, and the worker task starts after that. Always reassigned so a
+    # dispatcher from a previous startup, bound to a dead event loop, is never
+    # reused.
+    webhook_dispatcher = WebhookDispatcher(settings.webhooks) if settings.webhooks.enabled else None
+
     # Initialize DNS client
     try:
-        dns_client = DNSClient(settings)
+        dns_client = DNSClient(settings, webhook_dispatcher)
         log_internal_event("dns_client_initialized", logger)
     except Exception as e:
         log_internal_event(
@@ -318,10 +335,21 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     scheduler_task: asyncio.Task[None] | None = None
     if settings.scheduler.enabled:
         scheduled_store = ScheduledChangeStore(
-            database_path=settings.scheduler.database_path,
+            settings=settings.database,
             default_expiry_window=settings.scheduler.default_expiry_window,
         )
-        await scheduled_store.open()
+        try:
+            await scheduled_store.open()
+        except Exception as e:
+            log_internal_event(
+                "store_open_failed",
+                logger,
+                level="ERROR",
+                database_backend=settings.database.backend,
+                database_target=settings.database.redacted_url(),
+                error=str(e),
+            )
+            raise
         scheduled.set_dns_client(dns_client)
         scheduled.set_zone_cache(zone_cache)
         scheduled.set_store(scheduled_store)
@@ -337,8 +365,23 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         log_internal_event(
             "scheduler_store_initialized",
             logger,
-            database_path=settings.scheduler.database_path,
+            database_backend=settings.database.backend,
+            database_target=settings.database.redacted_url(),
+            auto_migrate=settings.database.auto_migrate,
         )
+
+    # Start webhook delivery. The store is attached here so manual changes can
+    # be auto-recorded and therefore linked to from notifications.
+    if webhook_dispatcher is not None:
+        webhook_dispatcher.store = scheduled_store
+        if scheduled_store is None and settings.webhooks.autorecord_manual_changes:
+            log_internal_event(
+                "webhook_autorecord_unavailable",
+                logger,
+                level="WARNING",
+                message="Scheduler disabled, so manual changes cannot be linked",
+            )
+        await webhook_dispatcher.start()
 
     # Initialize NOTIFY listener if enabled
     if settings.notify.enabled:
@@ -492,6 +535,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
             await scheduler_task
         except asyncio.CancelledError:
             pass
+
+    # Drain pending webhooks before the store they auto-record into is closed
+    if webhook_dispatcher:
+        await webhook_dispatcher.stop()
+        webhook_dispatcher = None
 
     # Close scheduled change store
     if scheduled_store:
@@ -680,6 +728,13 @@ At least one authentication method must be configured and used.
                 "require_tsig": settings.notify.require_tsig,
             }
 
+        database_status = None
+        if settings.scheduler.enabled:
+            database_status = {
+                "backend": settings.database.backend,
+                "connected": await scheduled_store.ping() if scheduled_store else False,
+            }
+
         return {
             "status": "healthy" if dns_ok else "degraded",
             "dns_server": settings.dns.server,
@@ -688,6 +743,7 @@ At least one authentication method must be configured and used.
             "cached_zones": len(zone_cache.list_zones()) if zone_cache else 0,
             "catalog": catalog_status,
             "notify": notify_status,
+            "database": database_status,
         }
 
     # Prometheus metrics endpoint
@@ -742,7 +798,7 @@ At least one authentication method must be configured and used.
 
         Returns configuration needed by the frontend, including
         authentication options, the proxy-authenticated identity (if any),
-        and version information.
+        version information, and branding/theme settings.
 
         Returns:
             UI configuration
@@ -756,7 +812,37 @@ At least one authentication method must be configured and used.
             "proxyAuthEnabled": settings.proxy_auth.enabled,
             "user": ({"email": proxy_user.email, "name": proxy_user.name} if proxy_user else None),
             "version": __version__,
+            "theme": settings.theme.to_ui_dict(settings.app_name),
         }
+
+    @app.get(
+        "/ui/logo",
+        tags=["Info"],
+        summary="UI Logo",
+        description="Serve the configured local logo image for the web UI.",
+        response_model=None,
+    )
+    async def ui_logo() -> FileResponse | JSONResponse:
+        """Serve the local logo file configured under theme.logo.path.
+
+        Unauthenticated so the login screen can render branding before sign-in.
+        """
+        logo = settings.theme.logo
+        if logo is None or not logo.path:
+            ui_logo_requests_total.labels(outcome="not_configured").inc()
+            return JSONResponse(
+                status_code=status.HTTP_404_NOT_FOUND,
+                content={"detail": "No local logo configured"},
+            )
+        ui_logo_requests_total.labels(outcome="served").inc()
+        media_type = logo.media_type() or "application/octet-stream"
+        return FileResponse(
+            path=logo.path,
+            media_type=media_type,
+            headers={
+                "Cache-Control": "public, max-age=3600",
+            },
+        )
 
     return app
 

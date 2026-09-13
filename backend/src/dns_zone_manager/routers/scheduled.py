@@ -33,6 +33,7 @@ from dns_zone_manager.models.requests import AtomicOperation
 from dns_zone_manager.models.scheduled import (
     ApplyResponse,
     AuditEventListResponse,
+    ChangeSource,
     ChangeStatus,
     ConflictWarning,
     PreviewResponse,
@@ -44,6 +45,7 @@ from dns_zone_manager.models.scheduled import (
     ScheduledChangeResponse,
     ScheduledChangeUpdate,
 )
+from dns_zone_manager.notifications.context import TRIGGER_REVERT, change_context
 from dns_zone_manager.scheduler.executor import execute_change
 from dns_zone_manager.scheduler.revert import (
     REVERT_WARNING,
@@ -211,6 +213,10 @@ async def list_scheduled_changes(
         ),
     ] = None,
     zone: Annotated[str | None, Query(description="Filter by zone")] = None,
+    source: Annotated[
+        ChangeSource | None,
+        Query(description="Filter by origin: scheduler or manual"),
+    ] = None,
 ) -> ScheduledChangeListResponse:
     """List scheduled changes, optionally filtered."""
     enrich_user_context(http_request, user)
@@ -219,6 +225,7 @@ async def list_scheduled_changes(
     changes = await store.list_changes(
         statuses=status_filter or None,
         zone=zone,
+        source=source,
         include_events=False,
     )
     return ScheduledChangeListResponse(changes=changes, total=len(changes))
@@ -727,7 +734,14 @@ async def revert_scheduled_change(
             auto_prerequisites=False,
             validate_cache_state=False,
         )
-        dns_client._send_update(built.update, zone)
+        # Attribute the write to the change being reverted so notifications
+        # link back to it rather than recording a separate manual change.
+        with change_context(
+            trigger=TRIGGER_REVERT,
+            change_id=change.id,
+            change_name=change.name,
+        ):
+            dns_client._send_update(built.update, zone)
         apply_cache_updates(zone, built.cache_updates, zone_cache)
         for cu in built.cache_updates:
             if cu.action == "add":

@@ -1,6 +1,7 @@
 import { API_BASE, api, formatDNSError } from '../api/client';
 import type {
   AppState,
+  ChangeSource,
   ChangeStatus,
   PreviewResult,
   RevertPreview,
@@ -13,6 +14,8 @@ import {
   canRevertChange,
   formFromChange,
   formatScheduledDisplay,
+  sourceBadgeClass,
+  sourceLabel,
   utcIsoToLocalDatetime,
   validateScheduleOps,
 } from './scheduledHelpers';
@@ -339,6 +342,9 @@ export function createScheduledMethods(_state: AppState) {
             params.append('status', status);
           }
         }
+        if (this.scheduledSourceFilter) {
+          params.append('source', this.scheduledSourceFilter);
+        }
         const qs = params.toString();
         const url = `${API_BASE}/scheduled-changes${qs ? `?${qs}` : ''}`;
         const response = await api(url, this.apiKey);
@@ -395,6 +401,32 @@ export function createScheduledMethods(_state: AppState) {
 
     allChangeStatuses(this: ScheduledMethodContext): ChangeStatus[] {
       return ALL_CHANGE_STATUSES;
+    },
+
+    setScheduledSourceFilter(
+      this: ScheduledMethodContext,
+      source: ChangeSource | '',
+    ) {
+      this.scheduledSourceFilter = source;
+      // Manual changes are recorded after the fact, so they are only ever
+      // applied or failed. The default status filter hides applied changes,
+      // which would make this filter look broken; widen it (visibly, in the
+      // status dropdown) so the selection returns something.
+      if (source === 'manual' && !this.scheduledStatusFilters.includes('applied')) {
+        this.scheduledStatusFilters = ['applied', 'failed'];
+      }
+      void this.loadScheduledChanges();
+    },
+
+    sourceLabel(this: ScheduledMethodContext, source: string | null | undefined): string {
+      return sourceLabel(source);
+    },
+
+    sourceBadgeClass(
+      this: ScheduledMethodContext,
+      source: string | null | undefined,
+    ): string {
+      return sourceBadgeClass(source);
     },
 
     statusLabel(this: ScheduledMethodContext, status: ChangeStatus): string {

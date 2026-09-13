@@ -63,15 +63,50 @@ notify:
   prefer_ixfr: true
   require_tsig: false
 
-# Scheduled Changes (SQLite intent store)
+# Persistence for scheduled changes and the audit log.
+# PostgreSQL runs in a sibling container reachable at hostname 'postgres'. Its
+# data is in tmpfs, so each devcontainer restart starts from an empty database
+# and the schema is recreated automatically.
+database:
+  backend: postgres
+  auto_migrate: true
+  postgres:
+    host: postgres
+    port: 5432
+    database: dns_zone_manager
+    user: dns_zone_manager
+    password: devpassword
+    sslmode: disable
+# To develop against SQLite instead, replace the block above with:
+# database:
+#   backend: sqlite
+#   path: .tmp/scheduler.db
+
+# Scheduled Changes (intent store; storage configured under 'database' above)
 scheduler:
   enabled: true
-  database_path: .tmp/scheduler.db
   poll_interval: 5
   max_attempts: 3
   retry_backoff: 30
   lease_ttl: 120
   default_expiry_window: 3600
+
+# Outbound change webhooks (Slack / Teams / generic)
+# Enabled with no targets: manual changes are recorded in the scheduler store
+# (so the Manual source filter and change links work) but nothing is delivered,
+# which keeps local development free of retries against unreachable endpoints.
+# Add a target below to exercise real delivery.
+webhooks:
+  enabled: true
+  base_url: http://localhost:5173
+  # targets:
+  #   - name: local-sink
+  #     type: generic
+  #     url: http://localhost:9099/hook
+  #     allow_insecure: true
+  #     auth:
+  #       type: hmac
+  #       secret: dev-signing-secret
 
 # Logging - use text format for local development (human-readable)
 logging:

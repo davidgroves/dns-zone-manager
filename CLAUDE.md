@@ -32,6 +32,12 @@ backend/src/dns_zone_manager/ # Python backend (FastAPI)
 ├── dns/                      # DNS client, cache, types
 ├── auth/                     # API key + Azure AD auth
 ├── models/                   # Pydantic models
+├── scheduler/                # Scheduled change store (SQLite or PostgreSQL)
+│   ├── schema.py             # SQLAlchemy MetaData: one definition, both dialects
+│   ├── engine.py             # Engine construction from config
+│   ├── migrate.py            # alembic upgrade head (advisory-locked on PostgreSQL)
+│   ├── migrations/           # Packaged Alembic environment + revisions
+│   └── store.py              # Store methods, SQLAlchemy Core expressions
 └── main.py                   # App factory
 
 frontend/                     # TypeScript SPA (Alpine.js)
@@ -76,6 +82,26 @@ uv run ty check backend/src
 # Import check (verify module loads)
 uv run python -c "from dns_zone_manager.routers.zones import router; print('OK')"
 ```
+
+### Database migrations (Alembic)
+
+The schema for scheduled changes lives in `scheduler/schema.py`; Alembic
+migrations in `scheduler/migrations/` are generated from it. The app runs
+`alembic upgrade head` at startup, so a blank database needs no manual step.
+
+```bash
+# Alembic reads connection settings from the app config file
+export DNS_ZONE_MANAGER_CONFIG_FILE=.devcontainer/config.devcontainer.yaml
+
+uv run alembic current   # Applied revision
+uv run alembic check     # Fails if schema.py and migrations have drifted
+uv run alembic upgrade head
+uv run alembic revision --autogenerate -m "add something"
+```
+
+After editing `scheduler/schema.py`, generate a revision, review the generated
+SQL (autogenerate mishandles custom types and index expressions), then run
+`alembic check` to confirm there is no remaining drift.
 
 ### Frontend
 
@@ -181,13 +207,13 @@ Config file: `.devcontainer/config.devcontainer.yaml` (DNS server = `bind`).
 
 ## Gotchas
 
-1. **Integration tests need Docker** — They spin up BIND via testcontainers. Skip with `-m "not integration"`
+1. **Integration tests need Docker** — They spin up BIND (and PostgreSQL, for storage backend tests) via testcontainers. Skip with `-m "not integration"`
 
 2. **Zone names always end with `.`** — `test.example.` not `test.example`
 
 3. **Frontend uses Alpine.js NOT React/Vue** — Templates are in HTML with `x-` directives
 
-4. **No database** — DNS server is the source of truth. Cache is ephemeral.
+4. **No database for zone state** — DNS server is the source of truth and the cache is ephemeral. The database (SQLite or PostgreSQL) holds only scheduled change *intent* and the audit log, never zone contents.
 
 5. **TSIG authentication** — All DNS operations use shared secret. Configured via YAML or env vars.
 
@@ -227,6 +253,20 @@ api_key:
 notify:
   require_tsig: false
   # tsig_key: notify-key  # Can use different key for NOTIFY validation
+
+# Storage for scheduled changes and the audit log.
+# Schema is created automatically, so an empty database is enough.
+database:
+  backend: sqlite          # or: postgres
+  auto_migrate: true
+  path: .tmp/scheduler.db  # SQLite only
+  # postgres:
+  #   host: postgres
+  #   port: 5432
+  #   database: dns_zone_manager
+  #   user: dns_zone_manager
+  #   password: change-me
+  #   sslmode: require
 ```
 
 ## Related Documentation

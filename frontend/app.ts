@@ -11,6 +11,7 @@ import { createScheduledMethods } from './modules/scheduled';
 import { createSearchMethods } from './modules/search';
 import { createSortingMethods } from './modules/sorting';
 import { createToastMethods } from './modules/toast';
+import { createThemeMethods } from './modules/theme';
 import { createZoneMethods } from './modules/zones';
 import { createInitialState } from './state';
 import type {
@@ -65,6 +66,7 @@ type AlpineThis = AppState & {
   loadZones: () => Promise<void>;
   navigateToRoute: (route: RouteParams) => Promise<void>;
   updateUrlFromState: () => void;
+  applyThemeFromConfig: (theme: import('./types').ThemeConfig | undefined) => void;
   // Utility functions
   getPageSizeForMode: typeof getPageSizeForMode;
 };
@@ -77,6 +79,7 @@ export function createApp(config: AppConfig) {
 
   // Create module methods
   const toastMethods = createToastMethods(state);
+  const themeMethods = createThemeMethods(state);
   const authMethods = createAuthMethods(state);
   const zoneMethods = createZoneMethods(state);
   const recordMethods = createRecordMethods(state);
@@ -93,6 +96,7 @@ export function createApp(config: AppConfig) {
   // Assign methods directly to state object so Alpine.js reactive updates work
   // (spreading state creates a copy; modules read from original state via closure)
   Object.assign(state, toastMethods);
+  Object.assign(state, themeMethods);
   Object.assign(state, authMethods);
   Object.assign(state, zoneMethods);
   Object.assign(state, recordMethods);
@@ -392,6 +396,7 @@ export function createApp(config: AppConfig) {
           self.proxyAuthEnabled = uiConfig.proxyAuthEnabled ?? false;
           self.currentUser = uiConfig.user?.email ?? null;
           self.appVersion = uiConfig.version ?? '';
+          self.applyThemeFromConfig(uiConfig.theme);
         }
       } catch {
         // Config fetch failed, keep defaults

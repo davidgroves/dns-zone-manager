@@ -1,4 +1,4 @@
-"""Unit tests for scheduled-change revert helpers and schema migration."""
+"""Unit tests for scheduled-change revert helpers."""
 
 from datetime import UTC, datetime
 from pathlib import Path
@@ -234,121 +234,6 @@ class TestBuildRevertOperations:
             build_revert_operations(_change(_op_response("add", snapshot_at=None)))
 
 
-V1_SCHEMA = """
-CREATE TABLE schema_version (version INTEGER NOT NULL);
-CREATE TABLE scheduled_changes (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    description TEXT,
-    zone TEXT NOT NULL,
-    status TEXT NOT NULL,
-    scheduled_at TEXT,
-    not_valid_after TEXT,
-    auto_prerequisites INTEGER NOT NULL DEFAULT 1,
-    created_at TEXT NOT NULL,
-    created_by TEXT,
-    updated_at TEXT NOT NULL,
-    attempts INTEGER NOT NULL DEFAULT 0,
-    next_attempt_at TEXT,
-    last_error TEXT,
-    applied_at TEXT,
-    result_rcode TEXT,
-    new_serial INTEGER,
-    lease_owner TEXT,
-    lease_expires_at TEXT
-);
-CREATE TABLE scheduled_operations (
-    change_id TEXT NOT NULL,
-    seq INTEGER NOT NULL,
-    action TEXT NOT NULL,
-    name TEXT NOT NULL,
-    type TEXT NOT NULL,
-    rdclass TEXT NOT NULL DEFAULT 'IN',
-    ttl INTEGER NOT NULL DEFAULT 3600,
-    records TEXT,
-    PRIMARY KEY (change_id, seq)
-);
-CREATE TABLE scheduled_prerequisites (
-    change_id TEXT NOT NULL,
-    seq INTEGER NOT NULL,
-    prereq_type TEXT NOT NULL,
-    name TEXT NOT NULL,
-    rdtype TEXT,
-    rdclass TEXT NOT NULL DEFAULT 'IN',
-    data TEXT,
-    PRIMARY KEY (change_id, seq)
-);
-CREATE TABLE scheduled_change_events (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    change_id TEXT NOT NULL,
-    ts TEXT NOT NULL,
-    event TEXT NOT NULL,
-    actor TEXT,
-    detail TEXT
-);
-"""
-
-
-@pytest.mark.asyncio
-async def test_schema_migrates_from_v1_to_latest(tmp_path: Path):
-    db_path = tmp_path / "legacy.db"
-    async with aiosqlite.connect(db_path) as db:
-        await db.executescript(V1_SCHEMA)
-        await db.execute("INSERT INTO schema_version (version) VALUES (1)")
-        await db.execute(
-            """
-            INSERT INTO scheduled_changes (
-                id, name, zone, status, auto_prerequisites,
-                created_at, updated_at, attempts
-            ) VALUES (
-                'legacy-1', 'Old', 'example.com.', 'applied', 1,
-                '2030-01-01T00:00:00+00:00', '2030-01-01T00:00:00+00:00', 1
-            )
-            """
-        )
-        await db.execute(
-            """
-            INSERT INTO scheduled_operations (
-                change_id, seq, action, name, type, rdclass, ttl, records
-            ) VALUES (
-                'legacy-1', 0, 'add', 'www', 'A', 'IN', 3600, '["192.0.2.1"]'
-            )
-            """
-        )
-        await db.commit()
-
-    store = ScheduledChangeStore(db_path)
-    await store.open()
-    try:
-        async with aiosqlite.connect(db_path) as db:
-            db.row_factory = aiosqlite.Row
-            cur = await db.execute("SELECT version FROM schema_version")
-            assert (await cur.fetchone())["version"] == 3
-            cur = await db.execute("PRAGMA table_info(scheduled_operations)")
-            cols = {r["name"] for r in await cur.fetchall()}
-            assert {"prior_ttl", "prior_records", "snapshot_at"} <= cols
-            cur = await db.execute("PRAGMA table_info(scheduled_changes)")
-            cols = {r["name"] for r in await cur.fetchall()}
-            assert "reverted_at" in cols
-            cur = await db.execute(
-                "SELECT name FROM sqlite_master WHERE type='index' "
-                "AND name LIKE 'idx_scheduled_change_events_%'"
-            )
-            index_names = {r["name"] for r in await cur.fetchall()}
-            assert {
-                "idx_scheduled_change_events_ts",
-                "idx_scheduled_change_events_event",
-                "idx_scheduled_change_events_actor",
-            } <= index_names
-
-        got = await store.get("legacy-1")
-        assert got is not None
-        assert got.operations[0].snapshot_at is None
-        assert got.reverted_at is None
-    finally:
-        await store.close()
-
-
 @pytest.mark.asyncio
 async def test_save_snapshots_and_mark_reverted(tmp_path: Path):
     store = ScheduledChangeStore(tmp_path / "snap.db")
@@ -374,9 +259,7 @@ async def test_save_snapshots_and_mark_reverted(tmp_path: Path):
             ],
         )
         # Pretend it was applied so mark_reverted is allowed
-        import aiosqlite as aio
-
-        async with aio.connect(store.database_path) as db:
+        async with aiosqlite.connect(store.database_path) as db:
             await db.execute(
                 "UPDATE scheduled_changes SET status = 'applied' WHERE id = ?",
                 (change.id,),

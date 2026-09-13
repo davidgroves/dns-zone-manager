@@ -203,7 +203,7 @@ test.describe('Scheduled Changes', () => {
       hasText: `E2E ${unique} renamed`,
     });
     await expect(renamed).toBeVisible({ timeout: 10000 });
-    await expect(renamed.locator('td').nth(4)).toHaveText('2');
+    await expect(renamed.locator('.scheduled-ops')).toHaveText('2');
 
     page.once('dialog', (dialog) => dialog.accept());
     await renamed.locator('button[title="Cancel change"]').click();
@@ -423,7 +423,7 @@ test.describe('Scheduled Changes', () => {
     await page.locator('button[title="Scheduled Changes"]').click();
     const row = page.locator('.scheduled-table tr', { hasText: `E2E ${unique}` });
     await expect(row).toBeVisible({ timeout: 10000 });
-    await expect(row.locator('td').nth(4)).toHaveText('4');
+    await expect(row.locator('.scheduled-ops')).toHaveText('4');
 
     await row.getByRole('button', { name: 'View', exact: true }).click();
     const detail = page.locator('#scheduled-change-detail');

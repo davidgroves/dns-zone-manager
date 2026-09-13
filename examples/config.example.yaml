@@ -181,15 +181,66 @@ catalog:
   remove_stale_zones: false
 
 # =============================================================================
-# Scheduled Changes (SQLite intent store)
+# Database (storage for scheduled changes and the audit log)
 # =============================================================================
-# Stores named, optionally timed DNS changes. SQLite holds only intent
-# (what to do, when) — never zone state. DNS remains the sole source of truth.
+# The only persistent state in the system. It holds intent (what to do, when)
+# and the audit trail — never zone state. DNS remains the sole source of truth
+# for what a zone contains.
+#
+# The schema is created automatically, so an empty database is all that is
+# needed to get started. Migrations run at startup unless auto_migrate is off.
+database:
+  # sqlite: a local file, no external service needed (default)
+  # postgres: an external PostgreSQL server, for durable storage shared by
+  #           several application instances
+  backend: sqlite
+
+  # Create or upgrade the schema at startup. Required the first time you point
+  # at an empty database. Set to false if you would rather apply migrations
+  # yourself with 'alembic upgrade head'.
+  auto_migrate: true
+
+  # SQLite database file. Defaults to scheduler.database_path when unset.
+  path: /var/lib/dns-zone-manager/scheduler.db
+
+  # PostgreSQL connection settings. Required when backend is 'postgres'.
+  # postgres:
+  #   host: postgres
+  #   port: 5432
+  #   database: dns_zone_manager
+  #   user: dns_zone_manager
+  #   password: change-me
+  #
+  #   # disable, allow, prefer, require, verify-ca, verify-full
+  #   sslmode: prefer
+  #
+  #   # Full connection URI as an alternative to the fields above. When set it
+  #   # takes precedence, and sslmode/connect_timeout come from the URI.
+  #   # dsn: postgresql://user:password@host:5432/dns_zone_manager?sslmode=require
+  #
+  #   # Schema placed at the head of search_path
+  #   schema: public
+  #
+  #   # Connection pool size
+  #   pool_size: 5
+  #
+  #   # Connection timeout in seconds
+  #   connect_timeout: 10
+  #
+  #   # Server-side statement timeout in milliseconds (0 disables)
+  #   statement_timeout_ms: 30000
+
+# =============================================================================
+# Scheduled Changes (intent store)
+# =============================================================================
+# Stores named, optionally timed DNS changes. Where they are stored is
+# configured in the 'database' section above.
 scheduler:
   # Enable the scheduled-change store and background runner
   enabled: true
 
-  # Path to the SQLite database file
+  # Deprecated: use database.path instead. Still honoured as the SQLite
+  # location when database.path is not set.
   database_path: /var/lib/dns-zone-manager/scheduler.db
 
   # Seconds between scheduler poll ticks
@@ -206,6 +257,90 @@ scheduler:
 
   # Default seconds after scheduled_at before a change expires
   default_expiry_window: 3600
+
+# =============================================================================
+# Change Webhooks (Slack / Microsoft Teams / generic)
+# =============================================================================
+# Posts a notification whenever a DNS change is committed, reporting who made
+# it, whether it was manual or scheduled, and a link to the change in the
+# Scheduled Changes view.
+webhooks:
+  # Enable outbound notifications
+  enabled: false
+
+  # Public base URL of this application, used to build the change link.
+  # Required when enabled.
+  base_url: https://dns.example.com
+
+  # Per-request HTTP timeout in seconds
+  timeout: 5.0
+
+  # Delivery attempts before giving up (transient failures and 5xx only)
+  max_retries: 3
+
+  # Base retry backoff in seconds, doubled per attempt
+  retry_backoff: 1.0
+
+  # Maximum events held in memory while waiting to be delivered. Events are
+  # dropped (and counted in metrics) when full, so DNS writes never block.
+  queue_size: 1000
+
+  # Events to notify on, for all targets that do not override it:
+  #   change_applied - a change was committed to DNS
+  #   change_failed  - a change was rejected or errored
+  events:
+    - change_applied
+    - change_failed
+
+  # Record every manual (non-scheduler) change in the scheduler store as an
+  # already-applied change, so every notification has a working link.
+  # Requires the scheduler section to be enabled.
+  autorecord_manual_changes: true
+
+  targets:
+    # Slack incoming webhook: the URL is the credential, so treat it as a secret
+    - name: slack-dns
+      type: slack
+      url: https://hooks.slack.com/services/T000/B000/XXXXXXXX
+
+    # Microsoft Teams: use a Power Automate "When a Teams webhook request is
+    # received" workflow URL. Payload is an Adaptive Card.
+    - name: teams-dns
+      type: teams
+      url: https://prod-00.westeurope.logic.azure.com:443/workflows/.../invoke
+      # Only notify for these zones (glob patterns, trailing dot optional)
+      zones:
+        - "*.prod.example.com"
+        - internal.example.com
+
+    # Generic JSON endpoint with HMAC request signing
+    - name: audit-sink
+      type: generic
+      url: https://audit.example.com/dns-events
+      # Override the global event list for this target
+      events:
+        - change_failed
+      # Extra static headers sent with every request
+      headers:
+        X-Environment: production
+      auth:
+        # none | bearer | basic | header | hmac
+        type: hmac
+        secret: change-me-to-a-long-random-string
+        # sha256 or sha512; signature is over "<timestamp>.<body>" and sent as
+        # "<algorithm>=<hex>" in the header below
+        algorithm: sha256
+        header: X-DNS-Signature
+        timestamp_header: X-DNS-Timestamp
+      # true, false, or a path to a CA bundle for private certificate authorities
+      verify_tls: true
+      # Per-target timeout override
+      timeout: 10.0
+
+    # Other supported auth types:
+    #   auth: { type: bearer, secret: my-token }        -> Authorization: Bearer
+    #   auth: { type: basic, username: u, password: p } -> Authorization: Basic
+    #   auth: { type: header, secret: k, header: X-API-Key }
 
 # =============================================================================
 # Logging Configuration
@@ -226,10 +361,70 @@ logging:
   slow_threshold_ms: 1000
 
 # =============================================================================
+# Frontend Theme / Branding
+# =============================================================================
+# Controls the web UI name, logo, and colour palettes. Delivered to the SPA
+# via GET /ui/config (and GET /ui/logo when using a local logo file).
+# Every colour field is optional — omit any token to keep the built-in default.
+# Colours must be #rgb / #rrggbb / #rrggbbaa or a CSS named colour.
+#
+# theme:
+#   # Display name in the login screen, sidebar, and document title.
+#   # Falls back to the top-level app_name when unset.
+#   app_name: Acme DNS
+#
+#   # Initial mode before any user preference is stored: dark | light | auto
+#   default_mode: dark
+#
+#   # Show a light/dark toggle in the UI (user choice persists in localStorage)
+#   allow_mode_toggle: true
+#
+#   # Logo used as the top-left home button. Supply url OR path, not both.
+#   # logo:
+#   #   url: https://cdn.example.com/logo.svg
+#   #   # path: /etc/dns-zone-manager/logo.svg   # served from GET /ui/logo
+#   #   alt: Acme DNS
+#
+#   # Partial overrides for dark mode (any subset of tokens)
+#   dark:
+#     accent_primary: "#58a6ff"
+#     # bg_primary: "#0f1419"
+#     # bg_secondary: "#1a1f2e"
+#     # bg_tertiary: "#252b3b"
+#     # bg_hover: "#2d3548"
+#     # border_color: "#3d4556"
+#     # text_primary: "#e6edf3"
+#     # text_secondary: "#8b949e"
+#     # text_muted: "#6e7681"
+#     # accent_success: "#3fb950"
+#     # accent_warning: "#d29922"
+#     # accent_danger: "#f85149"
+#     # accent_info: "#a371f7"
+#     # record_mx: "#f778ba"
+#     # record_txt: "#79c0ff"
+#     # record_ns: "#ffa657"
+#
+#   # Partial overrides for light mode
+#   light:
+#     accent_primary: "#0969da"
+#     # bg_primary: "#ffffff"
+#     # bg_secondary: "#f6f8fa"
+#     # bg_tertiary: "#eaeef2"
+#     # bg_hover: "#e1e6ec"
+#     # border_color: "#d0d7de"
+#     # text_primary: "#1f2328"
+#     # text_secondary: "#57606a"
+#     # text_muted: "#8c959f"
+#     # accent_success: "#1a7f37"
+#     # accent_warning: "#9a6700"
+#     # accent_danger: "#cf222e"
+#     # accent_info: "#8250df"
+
+# =============================================================================
 # Application Settings
 # =============================================================================
 
-# Application name (shown in API docs)
+# Application name (shown in API docs; also the UI fallback when theme.app_name is unset)
 app_name: DNS Zone Manager
 
 # Enable debug mode (enables verbose logging and auto-reload)

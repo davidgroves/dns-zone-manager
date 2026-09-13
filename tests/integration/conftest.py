@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from tests.integration.bind_container import BindContainer
+from tests.integration.postgres_container import PostgresContainer
 
 
 @pytest.fixture(scope="session")
@@ -28,10 +29,26 @@ def bind_server() -> Generator[BindContainer]:
         container.stop()
 
 
+@pytest.fixture(scope="session")
+def postgres_server() -> Generator[PostgresContainer]:
+    """Start a PostgreSQL container for the test session.
+
+    Only requested by tests that exercise the PostgreSQL storage backend, so
+    the container is not started for the rest of the suite.
+    """
+    container = PostgresContainer()
+    try:
+        container.start()
+        yield container
+    finally:
+        container.stop()
+
+
 def _make_config_yaml(
     bind_server: BindContainer,
     auth_enabled: bool = False,
     scheduler_db: str | None = None,
+    extra_yaml: str = "",
 ) -> str:
     """Create YAML config for the test.
 
@@ -39,6 +56,7 @@ def _make_config_yaml(
         bind_server: Running BIND container
         auth_enabled: Whether to enable API key authentication
         scheduler_db: Optional path for the scheduler SQLite database
+        extra_yaml: Additional top-level YAML sections to append
 
     Returns:
         YAML configuration string
@@ -106,7 +124,7 @@ scheduler:
   retry_backoff: 1
   lease_ttl: 30
   default_expiry_window: 3600
-
+{extra_yaml}
 debug: false
 """
 
@@ -132,11 +150,14 @@ def _set_config_file(config_yaml: str) -> Path:
 
 
 def _cleanup_config_file(config_path: Path) -> None:
-    """Clean up temp config file and restore previous config."""
+    """Delete the temp config file.
+
+    The config pointer is left dangling on purpose: the autouse
+    _baseline_config_file fixture in tests/conftest.py aims it back at the
+    shared test config once the test's own fixtures have torn down.
+    """
     from dns_zone_manager.config import get_settings
 
-    # Note: We don't restore the previous config file here because
-    # the main conftest.py will handle that
     config_path.unlink(missing_ok=True)
     get_settings.cache_clear()
 

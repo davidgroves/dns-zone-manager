@@ -53,8 +53,20 @@
       "problemMatcher": []
     },
     {
+      "label": "POSTGRES",
+      "type": "shell",
+      "command": "sudo docker logs -f dns-zone-manager_devcontainer-postgres-1",
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
       "label": "Run All",
-      "dependsOn": ["BACKEND", "FRONTEND", "BIND"],
+      "dependsOn": ["BACKEND", "FRONTEND", "BIND", "POSTGRES"],
       "dependsOrder": "parallel",
       "group": {
         "kind": "build",

@@ -33,6 +33,7 @@ docker compose logs -f
 | dns-zone-manager | 5354 | Catalog Zone NOTIFY listener |
 | bind | 15353 | BIND 9 DNS Server |
 | bind | 15953 | BIND 9 RNDC control port |
+| postgres | 15432 | PostgreSQL store for scheduled changes and the audit log |
 
 ## Access Points
 
@@ -392,6 +393,68 @@ dig @localhost -p 15353 example.com ANY
 dig @localhost -p 15353 example.com AXFR
 ```
 
+## Scheduled Change Store (PostgreSQL)
+
+Scheduled changes and the audit log are stored in PostgreSQL. The database
+starts empty and the API creates its own schema on first start, so this example
+also demonstrates pointing DNS Zone Manager at a blank database.
+
+The relevant part of `config.yaml`:
+
+```yaml
+database:
+  backend: postgres
+  auto_migrate: true
+  postgres:
+    host: postgres
+    port: 5432
+    database: dns_zone_manager
+    user: dns_zone_manager
+    password: demo-postgres-password
+    sslmode: disable
+```
+
+Confirm the API is talking to it:
+
+```bash
+curl -s http://localhost:8000/health | jq .database
+# { "backend": "postgres", "connected": true }
+```
+
+Inspect the data directly:
+
+```bash
+# Open a shell
+docker compose exec postgres psql -U dns_zone_manager -d dns_zone_manager
+
+# Or from the host (port 15432)
+psql postgresql://dns_zone_manager:demo-postgres-password@localhost:15432/dns_zone_manager
+```
+
+```sql
+-- Pending and recent changes
+SELECT id, name, zone, status, scheduled_at FROM scheduled_changes ORDER BY created_at DESC;
+
+-- Audit trail for one change
+SELECT ts, event, actor, detail FROM scheduled_change_events
+  WHERE change_id = '<id>' ORDER BY id;
+
+-- Which schema version the database is at
+SELECT * FROM alembic_version;
+```
+
+To use SQLite instead, replace the `database` section in `config.yaml` with:
+
+```yaml
+database:
+  backend: sqlite
+  path: /data/scheduler.db
+```
+
+Note that nothing mounts `/data` in the API container, so a SQLite database
+there is lost when the container is recreated. Add a volume if you want it to
+survive.
+
 ## Troubleshooting
 
 ### Architecture Issues (Apple Silicon / ARM)
@@ -437,6 +500,9 @@ docker compose logs -f dns-zone-manager
 
 # Just BIND
 docker compose logs -f bind
+
+# Just PostgreSQL
+docker compose logs -f postgres
 ```
 
 ### Restart Services
@@ -458,7 +524,13 @@ docker compose down
 # Remove volumes and start fresh
 docker compose down -v
 docker compose up -d
+
+# Or use the helper, which resets zone files and the database
+./clean-data.sh
 ```
+
+Removing the volumes discards the PostgreSQL data directory. The API rebuilds
+its schema on the next start.
 
 ## Configuration
 

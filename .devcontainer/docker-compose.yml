@@ -1,12 +1,13 @@
 # DNS Zone Manager Devcontainer Environment
-# Provides a development container and BIND DNS server.
+# Provides a development container, a BIND DNS server, and PostgreSQL.
 #
 # No static IPs/subnet are used. BIND's also-notify directive requires an IP
 # address (it does not support hostnames), so the BIND entrypoint resolves the
 # "dev" service name to its current IP at runtime and enables NOTIFY via
 # `rndc reconfig`. The dev container reaches BIND via the "bind" service name.
-#   dev:  receives NOTIFY on port 15354
-#   bind: DNS on 15353, RNDC on 953
+#   dev:      receives NOTIFY on port 15354
+#   bind:     DNS on 15353, RNDC on 953
+#   postgres: scheduled change store on 5432 (also published on host 15432)
 
 services:
   # Development container - VS Code/Cursor connects here
@@ -98,6 +99,36 @@ services:
         exec /usr/sbin/named -g -c /etc/bind/named.conf -u bind
     healthcheck:
       test: ["CMD-SHELL", "pgrep named > /dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+    networks:
+      - devnet
+
+  # PostgreSQL - scheduled change and audit store for local development.
+  # Data lives in tmpfs so it is cleared on container stop/restart, the same
+  # way BIND's zone data is. That keeps development runs reproducible and means
+  # every restart re-exercises creating the schema in an empty database.
+  postgres:
+    image: postgres:17
+    hostname: postgres
+    environment:
+      - TZ=UTC
+      - POSTGRES_USER=dns_zone_manager
+      - POSTGRES_PASSWORD=devpassword
+      - POSTGRES_DB=dns_zone_manager
+      # tmpfs starts empty on every boot, so initdb has to run each time.
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    tmpfs:
+      - /var/lib/postgresql/data:uid=999,gid=999
+    # Published so host GUI clients can connect; the dev container uses the
+    # "postgres" service name on 5432.
+    ports:
+      - "15432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dns_zone_manager -d dns_zone_manager"]
       interval: 5s
       timeout: 5s
       retries: 10

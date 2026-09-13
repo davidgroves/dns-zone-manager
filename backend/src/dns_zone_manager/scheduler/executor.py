@@ -23,6 +23,7 @@ from dns_zone_manager.metrics import (
     scheduled_changes_failed_total,
 )
 from dns_zone_manager.models.scheduled import ScheduledChangeResponse
+from dns_zone_manager.notifications.context import change_context
 from dns_zone_manager.scheduler.revert import capture_prior_state, forward_ops_to_atomic
 from dns_zone_manager.scheduler.store import ScheduledChangeStore
 
@@ -81,7 +82,15 @@ async def execute_change(
             validate_cache_state=False,
         )
 
-        dns_client._send_update(built.update, zone)
+        # Attribute the write to this change so notifications link to it
+        # instead of auto-recording a new manual change record.
+        with change_context(
+            trigger=trigger,
+            change_id=change.id,
+            change_name=change.name,
+            actor=actor,
+        ):
+            dns_client._send_update(built.update, zone)
 
         apply_cache_updates(zone, built.cache_updates, zone_cache)
         for cu in built.cache_updates:

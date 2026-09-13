@@ -15,6 +15,13 @@ export function createInitialState(config: AppConfig): AppState {
     currentUser: null,
     appVersion: '',
 
+    // Branding / theme
+    appName: config.theme?.appName ?? 'DNS Zone Editor',
+    logoUrl: config.theme?.logo?.url ?? null,
+    logoAlt: config.theme?.logo?.alt ?? 'Home',
+    themeMode: 'dark',
+    allowModeToggle: config.theme?.allowModeToggle !== false,
+
     // UI state
     loadingZones: false,
     loadingRecords: false,
@@ -113,6 +120,7 @@ export function createInitialState(config: AppConfig): AppState {
     selectedScheduledChange: null,
     scheduledStatusFilters: ['draft', 'scheduled', 'failed'],
     showScheduledStatusMenu: false,
+    scheduledSourceFilter: '',
     showRevertModal: false,
     revertPreview: null,
 

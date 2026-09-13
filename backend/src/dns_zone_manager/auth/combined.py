@@ -12,6 +12,11 @@ from dns_zone_manager.auth.api_key import APIKeyUser, api_key_header, validate_a
 from dns_zone_manager.auth.azure import AzureUser, azure_scheme, get_azure_scheme
 from dns_zone_manager.auth.proxy import ProxyUser, proxy_user_from_request
 from dns_zone_manager.config import get_settings
+from dns_zone_manager.notifications.context import (
+    TRIGGER_MANUAL,
+    ChangeContext,
+    set_change_context,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +123,10 @@ async def get_current_user(
     Tries trusted proxy header, then API key, then Azure AD. At least one
     must succeed (unless no auth method is enabled, which allows anonymous).
 
+    Also records the caller in the task-scoped change context so DNS writes
+    made while handling this request can be attributed without every handler
+    having to pass the user down.
+
     Args:
         request: The incoming request (used for proxy header auth)
         api_key: API key from header
@@ -129,6 +138,29 @@ async def get_current_user(
     Raises:
         HTTPException: If no valid authentication provided
     """
+    user = await _authenticate(request, api_key, bearer_token)
+
+    state = getattr(request, "state", None)
+    wide_event = getattr(state, "wide_event", None)
+    set_change_context(
+        ChangeContext(
+            actor=user.user_id,
+            actor_name=user.name,
+            actor_email=user.email,
+            auth_type=user.auth_type,
+            trigger=TRIGGER_MANUAL,
+            request_id=getattr(wide_event, "request_id", None),
+        )
+    )
+    return user
+
+
+async def _authenticate(
+    request: Request,
+    api_key: str | None,
+    bearer_token: str | None,
+) -> AuthenticatedUser:
+    """Resolve the caller identity from the enabled auth methods."""
     settings = get_settings()
 
     # Check if any auth method is enabled

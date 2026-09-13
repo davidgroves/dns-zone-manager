@@ -111,9 +111,7 @@ class TestRetentionPurge:
         gone = test_client.get(f"/v1/scheduled-changes/{old_id}")
         assert gone.status_code == 404, gone.text
 
-        events_after = test_client.get(
-            "/v1/scheduled-changes/events", params={"change_id": old_id}
-        )
+        events_after = test_client.get("/v1/scheduled-changes/events", params={"change_id": old_id})
         assert events_after.status_code == 200, events_after.text
         assert events_after.json()["total"] == 0
 

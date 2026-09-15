@@ -112,7 +112,7 @@ services:
   # way BIND's zone data is. That keeps development runs reproducible and means
   # every restart re-exercises creating the schema in an empty database.
   postgres:
-    image: postgres:17
+    image: postgres:18
     hostname: postgres
     environment:
       - TZ=UTC

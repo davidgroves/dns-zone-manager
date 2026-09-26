@@ -27,7 +27,10 @@ htmlcov/
 *.swp
 .DS_Store
 
-# Devcontainer and CI config (not needed in images)
+# Devcontainer and CI config (not needed in most images).
+# Keep the two conf files the .devcontainer/Dockerfile COPY's into the image.
 .devcontainer/
+!.devcontainer/dns-api-key.conf
+!.devcontainer/rndc.devcontainer.conf
 .github/
 .pre-commit-config.yaml

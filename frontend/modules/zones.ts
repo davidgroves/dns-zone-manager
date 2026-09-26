@@ -16,6 +16,8 @@ type ZoneMethodContext = AppState & {
   selectZone: (zone: string) => Promise<void>;
   loadZonesFirstPage: () => Promise<void>;
   loadZonesWithOffset: (offset: number) => Promise<void>;
+  connectZoneLive: (zone: string) => void;
+  disconnectZoneLive: () => void;
 };
 
 /**
@@ -252,6 +254,7 @@ export function createZoneMethods(_state: AppState) {
      * Select a zone.
      */
     async selectZone(this: ZoneMethodContext, zone: string) {
+      this.disconnectZoneLive();
       this.selectedZone = zone;
       this.showScheduledView = false;
       this.showAuditView = false;
@@ -259,6 +262,7 @@ export function createZoneMethods(_state: AppState) {
       await this.loadRecords();
       // Update URL to reflect selected zone
       syncUrlFromState(this);
+      this.connectZoneLive(zone);
     },
 
     /**

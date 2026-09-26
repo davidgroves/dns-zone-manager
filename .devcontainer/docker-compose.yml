@@ -137,6 +137,31 @@ services:
     networks:
       - devnet
 
+  # Opt-in continuous churn against always-changing.example (DDNS + API).
+  # Enable with: docker compose --profile churn up -d zone-churn
+  zone-churn:
+    profiles: ["churn"]
+    build:
+      context: ../examples/always-changing
+    hostname: zone-churn
+    environment:
+      - TZ=UTC
+      - ZONE=always-changing.example.
+      - BIND_HOST=bind
+      - BIND_PORT=15353
+      - API_BASE=http://dev:8000
+      - API_KEY=
+      - INTERVAL_SEC=5
+      - TSIG_NAME=dns-api-key
+      - TSIG_SECRET=K8vC2mP9nQ4rT6wX1yB3fG5hJ7kL0mN2pR4sU6vW8xY=
+      - TSIG_ALG=hmac-sha256
+    depends_on:
+      bind:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - devnet
+
 networks:
   # No static subnet: Docker assigns an available subnet automatically so the
   # devcontainer network never conflicts with other networks on the host.

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { ensureLoggedIn } from './helpers';
 
 /**
  * Zone management E2E tests.
@@ -8,29 +9,7 @@ import { expect, test } from '@playwright/test';
 
 test.describe('Zone Management', () => {
   test.beforeEach(async ({ page }) => {
-    // Clear stored credentials and login fresh
-    await page.goto('/');
-    await page.evaluate(() => localStorage.clear());
-    await page.goto('/');
-
-    // Wait for login form to be fully ready
-    const apiKeyInput = page.locator('input[placeholder="Enter your API key"]');
-    await expect(apiKeyInput).toBeVisible({ timeout: 10000 });
-    await expect(apiKeyInput).toBeEnabled();
-
-    // Fill and submit login
-    await apiKeyInput.fill('demo-api-key-12345');
-    await page.locator('button:has-text("Sign in with API Key")').click();
-
-    // Wait for successful authentication
-    await expect(page.locator('.app-container')).toBeVisible({
-      timeout: 15000,
-    });
-
-    // Wait for zones to load from the API (this is the key step)
-    await expect(page.locator('.zone-item').first()).toBeVisible({
-      timeout: 30000,
-    });
+    await ensureLoggedIn(page);
   });
 
   test('should display zone list', async ({ page }) => {

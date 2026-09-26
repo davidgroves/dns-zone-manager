@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { backendRequiresLogin, ensureLoggedIn } from './helpers';
 
 /**
  * URL-based navigation E2E tests.
@@ -12,7 +13,6 @@ import { expect, test } from '@playwright/test';
 test.describe('URL-Based Navigation', () => {
   test.describe('Without Authentication', () => {
     test.beforeEach(async ({ page }) => {
-      // Clear stored credentials
       await page.goto('/');
       await page.evaluate(() => localStorage.clear());
     });
@@ -20,91 +20,59 @@ test.describe('URL-Based Navigation', () => {
     test('should show login screen when navigating with zone param', async ({
       page,
     }) => {
+      test.skip(!(await backendRequiresLogin(page)), 'Auth disabled');
       await page.goto('/?zone=example.com.');
-
-      // Should show login screen
       await expect(page.locator('.login-container')).toBeVisible();
     });
 
     test('should preserve zone param and redirect after login', async ({
       page,
     }) => {
-      // Navigate to a specific zone URL without auth
-      await page.goto('/?zone=example.com.');
+      if (await backendRequiresLogin(page)) {
+        await page.goto('/?zone=example.com.');
+        await page
+          .locator('input[placeholder="Enter your API key"]')
+          .fill('demo-api-key-12345');
+        await page.locator('button:has-text("Sign in with API Key")').click();
+      } else {
+        await page.goto('/?zone=example.com.');
+      }
 
-      // Login
-      await page
-        .locator('input[placeholder="Enter your API key"]')
-        .fill('demo-api-key-12345');
-      await page.locator('button:has-text("Sign in with API Key")').click();
-
-      // Should be authenticated and on the zone
       await expect(page.locator('.app-container')).toBeVisible({
         timeout: 15000,
       });
-
-      // Should have example.com zone selected (active class)
       await expect(
         page.locator('.zone-item.active:has-text("example.com")'),
       ).toBeVisible({ timeout: 15000 });
-
-      // URL should reflect the zone
       await expect(page).toHaveURL(/zone=example\.com\./);
     });
 
     test('should preserve search params and redirect after login', async ({
       page,
     }) => {
-      // Navigate to a search URL without auth
-      await page.goto('/?q=www&type=A&all=true');
+      if (await backendRequiresLogin(page)) {
+        await page.goto('/?q=www&type=A&all=true');
+        await page
+          .locator('input[placeholder="Enter your API key"]')
+          .fill('demo-api-key-12345');
+        await page.locator('button:has-text("Sign in with API Key")').click();
+      } else {
+        await page.goto('/?q=www&type=A&all=true');
+      }
 
-      // Login
-      await page
-        .locator('input[placeholder="Enter your API key"]')
-        .fill('demo-api-key-12345');
-      await page.locator('button:has-text("Sign in with API Key")').click();
-
-      // Should be authenticated
       await expect(page.locator('.app-container')).toBeVisible({
         timeout: 15000,
       });
-
-      // Should show search results
       await expect(
         page.locator('.card-header h2:has-text("Search Results")'),
       ).toBeVisible({ timeout: 15000 });
-
-      // URL should reflect search params
       await expect(page).toHaveURL(/q=www/);
     });
   });
 
   test.describe('With Authentication', () => {
     test.beforeEach(async ({ page }) => {
-      // Clear stored credentials and login fresh
-      await page.goto('/');
-      await page.evaluate(() => localStorage.clear());
-      await page.goto('/');
-
-      // Wait for login form
-      const apiKeyInput = page.locator(
-        'input[placeholder="Enter your API key"]',
-      );
-      await expect(apiKeyInput).toBeVisible({ timeout: 10000 });
-
-      // Login
-      await apiKeyInput.fill('demo-api-key-12345');
-      await page.locator('button:has-text("Sign in with API Key")').click();
-
-      // Wait for authentication
-      await expect(page.locator('.app-container')).toBeVisible({
-        timeout: 15000,
-      });
-
-      // Wait for zones to load
-      await expect(page.locator('.zone-item').first()).toBeVisible({
-        timeout: 30000,
-      });
+      await ensureLoggedIn(page);
     });
 
     test('should update URL when selecting a zone', async ({ page }) => {
@@ -214,19 +182,13 @@ test.describe('URL-Based Navigation', () => {
     });
 
     test('should clear URL on logout', async ({ page }) => {
-      // Select a zone
+      test.skip(!(await backendRequiresLogin(page)), 'Auth disabled');
       await page.locator('.zone-item:has-text("example.com")').click();
       await expect(page).toHaveURL(/zone=/);
-
-      // Logout
       await page.locator('button[title="Logout"]').click();
-
-      // Should show login screen
       await expect(page.locator('.login-container')).toBeVisible({
         timeout: 10000,
       });
-
-      // URL should be clean (or just have the base path)
       const url = page.url();
       expect(url.includes('zone=')).toBe(false);
     });
@@ -234,23 +196,7 @@ test.describe('URL-Based Navigation', () => {
 
   test.describe('Direct URL Navigation', () => {
     test.beforeEach(async ({ page }) => {
-      // Login first
-      await page.goto('/');
-      await page.evaluate(() => localStorage.clear());
-      await page.goto('/');
-
-      const apiKeyInput = page.locator(
-        'input[placeholder="Enter your API key"]',
-      );
-      await expect(apiKeyInput).toBeVisible({ timeout: 10000 });
-      await apiKeyInput.fill('demo-api-key-12345');
-      await page.locator('button:has-text("Sign in with API Key")').click();
-      await expect(page.locator('.app-container')).toBeVisible({
-        timeout: 15000,
-      });
-      await expect(page.locator('.zone-item').first()).toBeVisible({
-        timeout: 30000,
-      });
+      await ensureLoggedIn(page);
     });
 
     test('should navigate directly to a zone via URL', async ({ page }) => {
@@ -320,49 +266,26 @@ test.describe('URL-Based Navigation', () => {
 
   test.describe('URL Sharing', () => {
     test('should produce shareable URLs', async ({ page }) => {
-      // Login
-      await page.goto('/');
-      await page.evaluate(() => localStorage.clear());
-      await page.goto('/');
+      await ensureLoggedIn(page);
 
-      const apiKeyInput = page.locator(
-        'input[placeholder="Enter your API key"]',
-      );
-      await expect(apiKeyInput).toBeVisible({ timeout: 10000 });
-      await apiKeyInput.fill('demo-api-key-12345');
-      await page.locator('button:has-text("Sign in with API Key")').click();
-      await expect(page.locator('.app-container')).toBeVisible({
-        timeout: 15000,
-      });
-      await expect(page.locator('.zone-item').first()).toBeVisible({
-        timeout: 30000,
-      });
-
-      // Navigate to a specific state
       await page.locator('.zone-item:has-text("example.com")').click();
       await expect(page.locator('.card .table-container')).toBeVisible({
         timeout: 15000,
       });
 
-      // Get the current URL
       const shareableUrl = page.url();
 
-      // Clear localStorage to simulate a new user
       await page.evaluate(() => localStorage.clear());
-
-      // Navigate to the shareable URL
       await page.goto(shareableUrl);
 
-      // Should show login screen (not authenticated)
-      await expect(page.locator('.login-container')).toBeVisible();
+      if (await backendRequiresLogin(page)) {
+        await expect(page.locator('.login-container')).toBeVisible();
+        await page
+          .locator('input[placeholder="Enter your API key"]')
+          .fill('demo-api-key-12345');
+        await page.locator('button:has-text("Sign in with API Key")').click();
+      }
 
-      // Login again
-      await page
-        .locator('input[placeholder="Enter your API key"]')
-        .fill('demo-api-key-12345');
-      await page.locator('button:has-text("Sign in with API Key")').click();
-
-      // Should navigate to the same zone
       await expect(
         page.locator('.zone-item.active:has-text("example.com")'),
       ).toBeVisible({ timeout: 15000 });

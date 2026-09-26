@@ -72,17 +72,21 @@
                             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M5.483 21.3H24L14.025 4.013l-3.038 8.347 5.836 6.938L5.483 21.3zM13.049 2.7l-6.394 11.33 7.037-1.67L13.049 2.7zM0 15.398l5.483 5.902 5.764-5.348L0 15.398z"/></svg>
                             Sign in with Azure AD
                         </button>
-                        <div class="login-divider">or use API Key</div>
+                        <div x-show="apiKeyEnabled" class="login-divider">or use API Key</div>
                     </div>
                 </template>
                 
-                <div class="form-group">
-                    <label>API Key</label>
-                    <input type="password" x-model="apiKeyInput" placeholder="Enter your API key" @keyup.enter="loginApiKey()">
-                </div>
-                <button @click="loginApiKey()" class="btn btn-success mt-2" style="width: 100%">
-                    Sign in with API Key
-                </button>
+                <template x-if="apiKeyEnabled">
+                    <div>
+                        <div class="form-group">
+                            <label>API Key</label>
+                            <input type="password" x-model="apiKeyInput" placeholder="Enter your API key" @keyup.enter="loginApiKey()">
+                        </div>
+                        <button @click="loginApiKey()" class="btn btn-success mt-2" style="width: 100%">
+                            Sign in with API Key
+                        </button>
+                    </div>
+                </template>
                 
                 <p x-show="loginError" class="text-danger mt-2" x-text="loginError"></p>
 
@@ -353,9 +357,11 @@
                             </svg>
                         </button>
 
-                        <button @click="logout()" class="btn btn-ghost btn-logout" title="Logout">
-                            Logout
-                        </button>
+                        <template x-if="apiKeyEnabled || azureEnabled || proxyAuthEnabled">
+                            <button @click="logout()" class="btn btn-ghost btn-logout" title="Logout">
+                                Logout
+                            </button>
+                        </template>
                     </div>
                 </header>
 
@@ -1012,7 +1018,7 @@
                                         </thead>
                                         <tbody>
                                             <template x-for="record in filteredRecords" :key="record.name + record.type + (record.rdclass || 'IN')">
-                                                <tr>
+                                                <tr :class="{ 'live-flash': isLiveFlashing(record) }">
                                                     <td>
                                                         <span class="record-name" 
                                                               :class="{ 'idn-label': record.name_is_idn }"

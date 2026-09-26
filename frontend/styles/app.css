@@ -1197,6 +1197,19 @@ input[type="radio"] {
     }
 }
 
+@keyframes live-flash {
+    0% {
+        background-color: color-mix(in srgb, var(--accent-primary) 28%, transparent);
+    }
+    100% {
+        background-color: transparent;
+    }
+}
+
+tr.live-flash > td {
+    animation: live-flash 1.2s ease;
+}
+
 .toast.success {
     border-left: 3px solid var(--accent-success);
 }

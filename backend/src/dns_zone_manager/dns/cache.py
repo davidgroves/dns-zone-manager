@@ -636,7 +636,7 @@ class CachedZone:
         self,
         batches: list[HistoryBatch],
         new_serial: int,
-    ) -> tuple[int, int]:
+    ) -> tuple[int, int, list[dict[str, object]]]:
         """Apply incremental changes from IXFR to the cached zone data.
 
         Processes IXFR batches in order, applying deletions then additions
@@ -647,15 +647,17 @@ class CachedZone:
             new_serial: The new serial number after applying all changes
 
         Returns:
-            Tuple of (total_deletes, total_adds) applied
+            Tuple of (total_deletes, total_adds, operations) where operations
+            are ChangeOperation-shaped dicts suitable for live WS payloads.
         """
         total_deletes = 0
         total_adds = 0
+        operations: list[dict[str, object]] = []
 
         with self._lock:
             zone_origin = self._get_zone_origin()
             if zone_origin is None:
-                return (0, 0)
+                return (0, 0, [])
 
             for batch in batches:
                 for change in batch.changes:
@@ -706,6 +708,25 @@ class CachedZone:
                             rdataset.add(rdata)
                             total_adds += 1
 
+                    fqdn = change.name
+                    if zone_origin is not None and not fqdn.endswith("."):
+                        relative = str(name_obj) if name_obj != dns.name.empty else ""
+                        if relative:
+                            fqdn = f"{relative}.{zone_origin.to_text()}"
+                        else:
+                            fqdn = zone_origin.to_text()
+
+                    operations.append(
+                        {
+                            "action": change.action,
+                            "name": fqdn,
+                            "type": change.rdtype,
+                            "rdclass": change.rdclass,
+                            "ttl": change.ttl if change.action == "add" else None,
+                            "records": list(change.records),
+                        }
+                    )
+
             # Update serial and SOA record
             self.serial = new_serial
             self._update_soa_serial(new_serial)
@@ -713,7 +734,7 @@ class CachedZone:
             # Regenerate jitter for next refresh cycle
             self.regenerate_jitter()
 
-        return (total_deletes, total_adds)
+        return (total_deletes, total_adds, operations)
 
     def _update_soa_serial(self, new_serial: int) -> None:
         """Update the SOA serial in the zone data.
@@ -817,40 +838,35 @@ class ZoneCache:
     def refresh_zone(self, zone: str, force_axfr: bool = False) -> CachedZone:
         """Refresh a zone from the DNS server, preferring IXFR when possible.
 
-        When the zone is already cached and prefer_ixfr is enabled:
-        1. Query current server serial via SOA
-        2. If serial unchanged, skip refresh (just update last_refresh timestamp)
-        3. If serial changed, attempt IXFR from cached serial
-        4. If IXFR returns true incremental data, apply changes
-        5. If IXFR falls back to AXFR, replace entire zone
-        6. Fall back to full AXFR on any IXFR error
+        See ``refresh_zone_with_ops`` for the incremental-ops variant used by
+        the live WebSocket NOTIFY path.
+        """
+        cached, _ops = self.refresh_zone_with_ops(zone, force_axfr=force_axfr)
+        return cached
 
-        Args:
-            zone: Zone name to refresh
-            force_axfr: Force full AXFR even if IXFR is possible
+    def refresh_zone_with_ops(
+        self, zone: str, force_axfr: bool = False
+    ) -> tuple[CachedZone, list[dict[str, object]] | None]:
+        """Refresh a zone and return live-update operations when IXFR succeeds.
 
         Returns:
-            Refreshed CachedZone
-
-        Raises:
-            ZoneTransferError: If zone transfer fails
+            ``(cached, ops)`` where:
+            - ``ops`` is a list of operation dicts for an incremental IXFR update
+            - ``ops`` is ``[]`` when the serial was unchanged
+            - ``ops`` is ``None`` when a full AXFR/reload happened (clients should reload)
         """
         zone = self._normalize_zone_name(zone)
 
-        # Check if zone is already cached
         with self._lock:
             existing_cached = self._zones.get(zone)
 
-        # Check if we should try IXFR
         prefer_ixfr = getattr(self.settings, "notify", None)
         prefer_ixfr = prefer_ixfr.prefer_ixfr if prefer_ixfr else True
 
         if existing_cached is not None and prefer_ixfr and not force_axfr:
-            # Try IXFR-based refresh
             result = self._refresh_zone_ixfr(zone, existing_cached)
             if result is not None:
                 return result
-            # IXFR failed, fall back to AXFR
             log_internal_event(
                 "ixfr_fallback_to_axfr",
                 logger,
@@ -858,8 +874,7 @@ class ZoneCache:
                 cached_serial=existing_cached.serial,
             )
 
-        # Perform full AXFR
-        return self._refresh_zone_axfr(zone)
+        return self._refresh_zone_axfr(zone), None
 
     def _refresh_zone_axfr(self, zone: str) -> CachedZone:
         """Refresh a zone using full AXFR.
@@ -918,15 +933,14 @@ class ZoneCache:
         )
         return cached
 
-    def _refresh_zone_ixfr(self, zone: str, cached: CachedZone) -> CachedZone | None:
+    def _refresh_zone_ixfr(
+        self, zone: str, cached: CachedZone
+    ) -> tuple[CachedZone, list[dict[str, object]]] | None:
         """Attempt to refresh a zone using IXFR.
 
-        Args:
-            zone: Normalized zone name
-            cached: Existing cached zone
-
         Returns:
-            Updated CachedZone if IXFR succeeded, None if should fall back to AXFR
+            ``(cached, operations)`` if IXFR succeeded (operations may be empty
+            when the serial was unchanged), or ``None`` to fall back to AXFR.
         """
         try:
             # Query current server serial
@@ -952,7 +966,7 @@ class ZoneCache:
                 cached.last_refresh = datetime.now(UTC)
                 # Regenerate jitter for next refresh cycle
                 cached.regenerate_jitter()
-                return cached
+                return cached, []
 
             log_internal_event(
                 "zone_refresh_start",
@@ -977,7 +991,7 @@ class ZoneCache:
                 return None  # Fall back to our AXFR code path
 
             # Apply incremental changes
-            deletes, adds = cached.apply_ixfr_changes(
+            deletes, adds, operations = cached.apply_ixfr_changes(
                 ixfr_result.batches,
                 ixfr_result.current_serial,
             )
@@ -996,7 +1010,7 @@ class ZoneCache:
                 batch_count=len(ixfr_result.batches),
             )
 
-            return cached
+            return cached, operations
 
         except ZoneTransferError as e:
             log_internal_event(

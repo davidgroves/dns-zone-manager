@@ -270,6 +270,7 @@ The Python backend provides:
 - **Zone Cache** — In-memory cache populated via AXFR
 - **Catalog Zone Support** — Auto-discovery of zones via RFC 9432
 - **Webhook Dispatcher** — Notifies Slack, Teams, or JSON endpoints when a change is committed
+- **Live Zone Hub** — WebSocket fan-out of applied changes (`/v1/zones/{zone}/ws` and `/v1/ws`)
 
 ```mermaid
 flowchart TB

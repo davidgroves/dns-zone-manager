@@ -211,6 +211,24 @@ webhook_autorecorded_changes_total = Counter(
     ["outcome"],  # recorded, failed, skipped
 )
 
+# Live zone-change WebSocket metrics
+zone_ws_subscribers = Gauge(
+    "dns_zone_manager_zone_ws_subscribers",
+    "Current number of live zone-change WebSocket subscribers",
+    ["scope"],  # zone | all
+)
+
+zone_ws_broadcasts_total = Counter(
+    "dns_zone_manager_zone_ws_broadcasts_total",
+    "Total number of live zone-change broadcasts",
+    ["scope"],  # zone | all
+)
+
+zone_ws_send_errors_total = Counter(
+    "dns_zone_manager_zone_ws_send_errors_total",
+    "Total number of failed live zone-change WebSocket sends",
+)
+
 # UI branding metrics
 ui_logo_requests_total = Counter(
     "dns_zone_manager_ui_logo_requests_total",

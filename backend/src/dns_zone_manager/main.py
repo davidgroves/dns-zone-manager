@@ -32,6 +32,7 @@ from dns_zone_manager.config import TSIGKeyEntry, get_settings
 from dns_zone_manager.dns.cache import ZoneCache
 from dns_zone_manager.dns.client import DNSClient, DNSClientError, ZoneTransferError
 from dns_zone_manager.dns.notify import NotifyListener
+from dns_zone_manager.live.hub import ZoneChangeHub
 from dns_zone_manager.logging import configure_logging, log_internal_event
 from dns_zone_manager.metrics import ui_logo_requests_total
 from dns_zone_manager.middleware import WideEventMiddleware, enrich_error_context
@@ -42,6 +43,7 @@ from dns_zone_manager.routers import (
     auth,
     catalog,
     history,
+    live,
     nsupdate,
     reverse,
     rrsets,
@@ -67,6 +69,7 @@ catalog_indexer: Any = None  # CatZoneIndex | None when catalog_zone_indexer is 
 notify_listener: NotifyListener | None = None
 scheduled_store: ScheduledChangeStore | None = None
 webhook_dispatcher: WebhookDispatcher | None = None
+zone_change_hub: ZoneChangeHub | None = None
 
 
 async def _sync_catalog_zones() -> None:
@@ -206,7 +209,8 @@ async def _handle_zone_notify(zone_name: str) -> None:
     """Handle a NOTIFY message for a zone by triggering refresh.
 
     This callback is invoked by the NotifyListener when a NOTIFY
-    message is received. It refreshes the zone using IXFR when possible.
+    message is received. It refreshes the zone using IXFR when possible
+    and broadcasts live updates to WebSocket subscribers.
 
     Args:
         zone_name: The zone that received the NOTIFY
@@ -238,7 +242,33 @@ async def _handle_zone_notify(zone_name: str) -> None:
             zone=zone_name,
             current_serial=cached.serial,
         )
-        zone_cache.refresh_zone(zone_name)
+        refreshed, operations = zone_cache.refresh_zone_with_ops(zone_name)
+        if zone_change_hub is None:
+            return
+        if operations is None:
+            zone_change_hub.broadcast(
+                zone_name,
+                {
+                    "type": "zone_reload",
+                    "event": "change_applied",
+                    "operations": [],
+                    "trigger": "notify",
+                    "change_id": None,
+                    "serial": refreshed.serial,
+                },
+            )
+        elif operations:
+            zone_change_hub.broadcast(
+                zone_name,
+                {
+                    "type": "zone_change",
+                    "event": "change_applied",
+                    "operations": operations,
+                    "trigger": "notify",
+                    "change_id": None,
+                    "serial": refreshed.serial,
+                },
+            )
     except ZoneTransferError as e:
         log_internal_event(
             "notify_refresh_failed",
@@ -265,7 +295,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     cleans up on shutdown.
     """
     global dns_client, zone_cache, catalog_indexer, notify_listener, scheduled_store
-    global webhook_dispatcher
+    global webhook_dispatcher, zone_change_hub
 
     settings = get_settings()
 
@@ -300,9 +330,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     # reused.
     webhook_dispatcher = WebhookDispatcher(settings.webhooks) if settings.webhooks.enabled else None
 
+    # Live zone-change hub (WebSocket fan-out); independent of webhooks.
+    zone_change_hub = ZoneChangeHub()
+    zone_change_hub.bind_loop(asyncio.get_running_loop())
+    live.set_zone_change_hub(zone_change_hub)
+
     # Initialize DNS client
     try:
-        dns_client = DNSClient(settings, webhook_dispatcher)
+        dns_client = DNSClient(settings, webhook_dispatcher, zone_change_hub)
         log_internal_event("dns_client_initialized", logger)
     except Exception as e:
         log_internal_event(
@@ -542,6 +577,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         await webhook_dispatcher.stop()
         webhook_dispatcher = None
 
+    if zone_change_hub is not None:
+        zone_change_hub.unbind_loop()
+        live.set_zone_change_hub(None)
+        zone_change_hub = None
+
     # Close scheduled change store
     if scheduled_store:
         await scheduled_store.close()
@@ -600,6 +640,16 @@ This API supports two authentication methods:
 - **API Key**: X-API-Key header authentication
 
 At least one authentication method must be configured and used.
+
+## Live updates
+
+WebSocket subscriptions push applied zone changes to connected clients:
+
+- ``WS /v1/zones/{zone}/ws`` — changes for one zone
+- ``WS /v1/ws`` — changes for all zones
+
+Authenticate with the same credentials as REST. Browser clients may pass
+``api_key`` or ``access_token`` as query parameters.
         """,
         version=__version__,
         docs_url="/docs",
@@ -635,6 +685,7 @@ At least one authentication method must be configured and used.
     app.include_router(reverse.router, prefix="/v1")
     app.include_router(history.router, prefix="/v1")
     app.include_router(scheduled.router, prefix="/v1")
+    app.include_router(live.router, prefix="/v1")
 
     # Exception handlers
     @app.exception_handler(DNSClientError)

@@ -39,7 +39,37 @@ npm run dev
 | Backend | http://localhost:8000 |
 | Swagger | http://localhost:8000/docs |
 
-Login with API key: `demo-api-key-12345`
+Authentication is disabled in the devcontainer (`api_key.enabled: false`); the UI
+opens straight into the app with no login screen.
+
+### Always-changing zone (opt-in churn)
+
+BIND serves `always-changing.example` with seeded `ddns-*`, `api-*`, and `both-*`
+records. To continuously mutate them (direct DDNS + REST API), use the opt-in
+ZONE CHURN task — it is **not** part of the default Run All task (API writes
+would flood Manual audit rows while webhooks are enabled):
+
+**Cmd/Ctrl+Shift+P → Tasks: Run Task → ZONE CHURN**
+
+That runs `examples/always-changing/churn.sh` in the devcontainer against `bind:15353`
+and `http://127.0.0.1:8000` (backend must already be running). There is also a
+Compose service under profile `churn` for the examples stack; see
+`examples/README.md`.
+
+After changing zone files or `named.conf`, recreate BIND so the entrypoint
+copies the updated zone files (a plain restart is not enough for new files):
+
+```bash
+# From a host shell in the repo, or via a compose helper that uses host paths
+docker compose -p dns-zone-manager_devcontainer -f .devcontainer/docker-compose.yml up -d --force-recreate bind
+```
+
+### Live zone WebSockets
+
+While a zone is selected, the UI opens `WS /v1/zones/{zone}/ws` and patches
+visible rows (with a short flash) when changes arrive. API clients can also
+subscribe to every zone on `WS /v1/ws`. Authenticate the same way as REST;
+browser clients pass `?api_key=` when API key auth is enabled.
 
 ## TypeScript Frontend
 
@@ -256,6 +286,27 @@ In GitHub repo settings → Branches, require pull requests and the CI status ch
 ## Dependency Updates (Renovate)
 
 Renovate (GitHub App) opens daily dependency update PRs for Python (`uv`) and npm packages. Configuration lives in `renovate.json5`. PRs require manual review and merge (`automerge: false`).
+
+## Automated PR review (Cursor Bugbot)
+
+Non-Renovate pull requests are reviewed automatically by [Cursor Bugbot](https://cursor.com/docs/bugbot). Bugbot posts inline comments and a PR summary, and publishes a **Cursor Bugbot** check on the PR.
+
+### Setup (one-time, Cursor dashboard)
+
+1. Connect GitHub under [cursor.com/dashboard](https://cursor.com/dashboard) → Integrations and install the **Cursor** GitHub App on `davidgroves/dns-zone-manager`.
+2. Enable Bugbot for this repository under Automations → Bugbot (automatic reviews on, not manual-only).
+3. Add **`renovate[bot]`** to the Bugbot PR author blocklist so dependency-update PRs are skipped.
+4. Keep Autofix off until you explicitly want Cloud Agent spend. Prefer **Run only once per PR** if you want to limit usage-based cost (~$1–$1.50 per review run on average).
+
+On Individual plans, Bugbot auto-reviews only PRs you author. Use a Team plan if collaborators’ PRs should be reviewed automatically.
+
+### Project rules
+
+Bugbot reads [`.cursor/BUGBOT.md`](.cursor/BUGBOT.md) for repo-specific review guidance (architecture, testing expectations, zone-name conventions). Nested `.cursor/BUGBOT.md` files under subtrees can add scoped rules when needed.
+
+### Manual re-review
+
+Comment `cursor review` or `bugbot run` on the PR conversation. Use `cursor review verbose=true` when debugging which rules ran.
 
 ## Code Quality
 

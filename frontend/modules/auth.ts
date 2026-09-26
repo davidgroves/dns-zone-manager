@@ -10,6 +10,7 @@ type MethodContext = AppState & {
   trackLogout: () => Promise<void>;
   navigateToRoute: (route: RouteParams) => Promise<void>;
   updateUrlFromState: () => void;
+  disconnectZoneLive: () => void;
 };
 
 /**
@@ -114,6 +115,7 @@ export function createAuthMethods(_state: AppState) {
      * Logout and clear state.
      */
     logout(this: MethodContext) {
+      this.disconnectZoneLive();
       this.trackLogout();
       this.authenticated = false;
       this.apiKey = null;

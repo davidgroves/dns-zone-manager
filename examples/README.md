@@ -67,13 +67,37 @@ X-API-Key: demo-api-key-12345
 
 ## Example Zones
 
-The environment comes with three pre-configured zones:
+The environment comes with pre-configured zones, including:
 
 | Zone | Description |
 |------|-------------|
 | `example.com` | General purpose zone with web, mail, and CDN records |
 | `internal.corp` | Internal corporate zone with services and infrastructure |
 | `test.local` | Test zone for experimentation |
+| `always-changing.example` | Continuous churn demo (DDNS + API); see below |
+
+BIND sends NOTIFY to the API for **all** zones (via the compose entrypoint's `also-notify` target), so external DDNS updates refresh the API cache promptly — not only catalog changes.
+
+### Always-changing churn zone
+
+`always-changing.example` is seeded with fixed names that an opt-in sidecar keeps updating:
+
+| Prefix | Writer |
+|--------|--------|
+| `ddns-*` | Direct TSIG `nsupdate` to BIND (DDNS ticks) |
+| `api-*` | REST `PUT /v1/zones/.../rrsets` (API ticks) |
+| `both-*` | DDNS then API in the same tick (BOTH ticks) |
+
+The sidecar cycles **DDNS → API → BOTH** one mode per interval.
+
+Enable the sidecar (off by default so demos/tests stay quiet):
+
+```bash
+docker compose --profile churn up -d --build zone-churn
+docker compose logs -f zone-churn
+```
+
+API-lane updates use `X-API-Key: demo-api-key-12345`. When webhooks are enabled in the API config, those writes are also recorded as Manual scheduled/audit rows.
 
 ## Catalog Zone Auto-Discovery
 

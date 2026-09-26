@@ -38,6 +38,7 @@ from dns_zone_manager.notifications.events import (
 
 if TYPE_CHECKING:
     from dns_zone_manager.config import Settings
+    from dns_zone_manager.live.hub import ZoneChangeHub
     from dns_zone_manager.notifications.dispatcher import WebhookDispatcher
 
 logger = logging.getLogger(__name__)
@@ -168,14 +169,17 @@ class DNSClient:
         self,
         settings: "Settings",
         dispatcher: "WebhookDispatcher | None" = None,
+        change_hub: "ZoneChangeHub | None" = None,
     ):
         """Initialize DNS client with settings.
 
         Args:
             settings: Application settings containing DNS server and TSIG config
             dispatcher: Optional webhook dispatcher notified of every change
+            change_hub: Optional live WebSocket hub for applied changes
         """
         self.dispatcher = dispatcher
+        self.change_hub = change_hub
         # Configuration may specify a hostname (e.g. a Docker service name);
         # dnspython requires an IP, so resolve it once at construction time.
         self.server_host = settings.dns.server
@@ -747,32 +751,51 @@ class DNSClient:
 
         Never raises: notification problems must not fail a DNS update.
         """
-        if self.dispatcher is None:
-            return
+        change_event: DnsChangeEvent | None = None
         try:
             context = get_change_context() or ChangeContext()
             change_id = context.change_id or str(uuid.uuid4())
-            self.dispatcher.emit(
-                DnsChangeEvent(
-                    event=event,
-                    zone=zone,
-                    operations=operations_from_update(update),
-                    trigger=context.trigger or TRIGGER_MANUAL,
-                    actor=context.actor,
-                    actor_name=context.actor_name,
-                    actor_email=context.actor_email,
-                    auth_type=context.auth_type,
-                    change_id=change_id,
-                    change_name=context.change_name,
-                    request_id=context.request_id,
-                    server=self.server_host,
-                    rcode=rcode,
-                    error=error,
-                    autorecord=context.change_id is None,
-                )
+            change_event = DnsChangeEvent(
+                event=event,
+                zone=zone,
+                operations=operations_from_update(update),
+                trigger=context.trigger or TRIGGER_MANUAL,
+                actor=context.actor,
+                actor_name=context.actor_name,
+                actor_email=context.actor_email,
+                auth_type=context.auth_type,
+                change_id=change_id,
+                change_name=context.change_name,
+                request_id=context.request_id,
+                server=self.server_host,
+                rcode=rcode,
+                error=error,
+                autorecord=context.change_id is None,
             )
+            if self.dispatcher is not None:
+                self.dispatcher.emit(change_event)
         except Exception as e:
             logger.warning("Failed to emit DNS change event for %s: %s", zone, e)
+
+        if (
+            change_event is not None
+            and change_event.event == EVENT_CHANGE_APPLIED
+            and self.change_hub is not None
+        ):
+            try:
+                self.change_hub.broadcast(
+                    zone,
+                    {
+                        "type": "zone_change",
+                        "event": change_event.event,
+                        "operations": [op.to_dict() for op in change_event.operations],
+                        "trigger": change_event.trigger,
+                        "change_id": change_event.change_id,
+                        "serial": None,
+                    },
+                )
+            except Exception as e:
+                logger.warning("Failed to broadcast live zone change for %s: %s", zone, e)
 
     def _send_update(self, update: dns.update.Update, zone: str) -> None:
         """Send a DDNS update to the server.

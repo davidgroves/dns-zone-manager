@@ -1,0 +1,31 @@
+$TTL 60
+$ORIGIN always-changing.example.
+
+; SOA Record
+@       IN      SOA     ns1.always-changing.example. admin.always-changing.example. (
+                        1                       ; Serial
+                        60              ; refresh
+                        60              ; retry
+                        86400           ; expire
+                        60              ; minimum TTL
+                        )
+
+; Name Servers
+@       IN      NS      ns1.always-changing.example.
+
+; Name Server A Record
+ns1     IN      A       203.0.113.1
+
+; Seeded A records for the churn generator (ddns-*, api-*, both-*).
+; Values are replaced continuously; these initials avoid add/delete races.
+ddns-1  IN      A       203.0.113.10
+ddns-2  IN      A       203.0.113.11
+ddns-3  IN      A       203.0.113.12
+
+api-1   IN      A       203.0.113.13
+api-2   IN      A       203.0.113.14
+api-3   IN      A       203.0.113.15
+
+both-1  IN      A       203.0.113.16
+both-2  IN      A       203.0.113.17
+both-3  IN      A       203.0.113.18

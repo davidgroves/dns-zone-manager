@@ -331,6 +331,14 @@ zone "xn--l3caihh2b1dya9nsa" {
     allow-transfer { key "dns-api-key"; };
 };
 
+// Zone: always-changing.example - Continuous DDNS/API churn demo zone
+zone "always-changing.example" {
+    type primary;
+    file "/var/lib/bind/db.always-changing.example";
+    allow-update { key "dns-api-key"; };
+    allow-transfer { key "dns-api-key"; };
+};
+
 // Catalog zone (RFC 9432) - Lists all member zones for auto-discovery
 zone "catalog.example" {
     type primary;

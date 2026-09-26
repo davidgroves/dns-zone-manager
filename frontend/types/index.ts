@@ -362,6 +362,7 @@ export interface AppState {
   apiKeyInput: string;
   loginError: string;
   azureEnabled: boolean;
+  apiKeyEnabled: boolean;
   proxyAuthEnabled: boolean;
   currentUser: string | null;
   appVersion: string;
@@ -385,6 +386,7 @@ export interface AppState {
   zoneFilter: string;
   selectedZone: string | null;
   records: RRset[];
+  liveFlashKeys: Set<string>;
   catalogStatus: CatalogStatus | null;
   catalogZones: Set<string>;
   syncingCatalog: boolean;
@@ -542,6 +544,7 @@ export interface ThemeConfig {
 
 export interface AppConfig {
   azureEnabled?: boolean;
+  apiKeyEnabled?: boolean;
   proxyAuthEnabled?: boolean;
   version?: string;
   theme?: ThemeConfig;

@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { ensureLoggedIn } from './helpers';
 
 /**
  * The Scheduled Changes list mixes changes created in the scheduler with
@@ -11,17 +12,7 @@ import { expect, type Page, test } from '@playwright/test';
  */
 test.describe('Scheduled Changes source filter', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
-    await page.evaluate(() => localStorage.clear());
-    await page.goto('/');
-
-    const apiKeyInput = page.locator('input[placeholder="Enter your API key"]');
-    await expect(apiKeyInput).toBeVisible({ timeout: 10000 });
-    await apiKeyInput.fill('demo-api-key-12345');
-    await page.locator('button:has-text("Sign in with API Key")').click();
-
-    await expect(page.locator('.app-container')).toBeVisible({ timeout: 15000 });
-    await openScheduledView(page);
+    await ensureLoggedIn(page);
   });
 
   test('shows the source filter with all sources selected by default', async ({

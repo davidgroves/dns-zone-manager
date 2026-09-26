@@ -20,6 +20,9 @@ version IN  TXT "2"
 ; The owner name is a unique identifier (can be any unique string)
 ; We use simple identifiers here for readability
 
+; Member zone: always-changing.example (continuous DDNS/API churn demo)
+always-changing.zones   IN  PTR always-changing.example.
+
 ; Member zone: example.com
 example-com.zones       IN  PTR example.com.
 

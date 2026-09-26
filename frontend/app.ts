@@ -3,6 +3,7 @@ import { createAtomicMethods } from './modules/atomic';
 import { createAuditMethods } from './modules/audit';
 import { createAuthMethods } from './modules/auth';
 import { createHistoryMethods } from './modules/history';
+import { createLiveMethods } from './modules/live';
 import { createNsupdateMethods } from './modules/nsupdate';
 import { createRecordMethods } from './modules/records';
 import { createReverseMethods } from './modules/reverse';
@@ -89,6 +90,7 @@ export function createApp(config: AppConfig) {
   const nsupdateMethods = createNsupdateMethods(state);
   const reverseMethods = createReverseMethods(state);
   const historyMethods = createHistoryMethods(state);
+  const liveMethods = createLiveMethods(state);
   const scheduledMethods = createScheduledMethods(state);
   const auditMethods = createAuditMethods(state);
   const routerMethods = createRouterMethods(state);
@@ -106,6 +108,7 @@ export function createApp(config: AppConfig) {
   Object.assign(state, nsupdateMethods);
   Object.assign(state, reverseMethods);
   Object.assign(state, historyMethods);
+  Object.assign(state, liveMethods);
   Object.assign(state, scheduledMethods);
   Object.assign(state, auditMethods);
   Object.assign(state, routerMethods);
@@ -393,6 +396,7 @@ export function createApp(config: AppConfig) {
         if (response.ok) {
           const uiConfig = await response.json();
           self.azureEnabled = uiConfig.azureEnabled ?? false;
+          self.apiKeyEnabled = uiConfig.apiKeyEnabled ?? true;
           self.proxyAuthEnabled = uiConfig.proxyAuthEnabled ?? false;
           self.currentUser = uiConfig.user?.email ?? null;
           self.appVersion = uiConfig.version ?? '';
@@ -409,6 +413,20 @@ export function createApp(config: AppConfig) {
       if (self.proxyAuthEnabled) {
         self.authenticated = true;
         self.trackLogin('proxy');
+        if (self.intendedRoute) {
+          await self.navigateToRoute(self.intendedRoute);
+        } else {
+          await self.loadZones();
+          self.updateUrlFromState();
+        }
+        return;
+      }
+
+      // No auth methods configured — allow anonymous access without a login screen.
+      if (!self.apiKeyEnabled && !self.azureEnabled) {
+        self.authenticated = true;
+        self.currentUser = 'anonymous';
+        self.trackLogin('none');
         if (self.intendedRoute) {
           await self.navigateToRoute(self.intendedRoute);
         } else {

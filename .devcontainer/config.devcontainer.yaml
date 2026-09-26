@@ -24,14 +24,10 @@ dns:
   axfr_timeout: 60.0
   update_tsig_key: dns-api-key
 
-# API Key Authentication
+# No authentication in the devcontainer — anonymous access is intentional.
+# Re-enable api_key / azure_ad / proxy_auth here if you need to exercise them.
 api_key:
-  enabled: true
-  keys:
-    - name: admin
-      secret: demo-api-key-12345
-    - name: readonly
-      secret: another-key-67890
+  enabled: false
 
 # Azure AD disabled for local dev
 azure_ad:

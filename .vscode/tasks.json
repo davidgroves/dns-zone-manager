@@ -65,6 +65,21 @@
       "problemMatcher": []
     },
     {
+      "label": "ZONE CHURN",
+      "type": "shell",
+      "command": "BIND_HOST=bind BIND_PORT=15353 API_BASE=http://127.0.0.1:8000 API_KEY= INTERVAL_SEC=5 /workspace/examples/always-changing/churn.sh",
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "isBackground": true,
+      "runOptions": {
+        "instanceLimit": 1
+      },
+      "problemMatcher": []
+    },
+    {
       "label": "Run All",
       "dependsOn": ["BACKEND", "FRONTEND", "BIND", "POSTGRES"],
       "dependsOrder": "parallel",

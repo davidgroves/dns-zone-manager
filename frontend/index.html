@@ -66,16 +66,6 @@
                 </h1>
                 <p>Sign in to manage DNS records</p>
                 
-                <template x-if="azureEnabled">
-                    <div>
-                        <button @click="loginAzure()" class="btn btn-primary" style="width: 100%">
-                            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M5.483 21.3H24L14.025 4.013l-3.038 8.347 5.836 6.938L5.483 21.3zM13.049 2.7l-6.394 11.33 7.037-1.67L13.049 2.7zM0 15.398l5.483 5.902 5.764-5.348L0 15.398z"/></svg>
-                            Sign in with Azure AD
-                        </button>
-                        <div x-show="apiKeyEnabled" class="login-divider">or use API Key</div>
-                    </div>
-                </template>
-                
                 <template x-if="apiKeyEnabled">
                     <div>
                         <div class="form-group">
@@ -357,7 +347,7 @@
                             </svg>
                         </button>
 
-                        <template x-if="apiKeyEnabled || azureEnabled || proxyAuthEnabled">
+                        <template x-if="apiKeyEnabled || proxyAuthEnabled">
                             <button @click="logout()" class="btn btn-ghost btn-logout" title="Logout">
                                 Logout
                             </button>

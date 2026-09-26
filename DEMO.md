@@ -399,27 +399,27 @@ API_KEYS=alice:secret-key-1,bob:secret-key-2
 - **Named keys**: Each key has an identity for audit logs
 - **Multiple keys**: Support different users/services
 
-### Azure AD Authentication (Optional)
+### Trusted Reverse-Proxy Authentication (Optional)
 
-OAuth2/OIDC authentication with Azure Active Directory:
-
-1. User clicks "Sign in with Azure AD"
-2. Redirects to Microsoft login
-3. Returns with token
-4. Backend validates token against Azure AD
+When the app sits behind a front proxy that already authenticates users
+(e.g. Traefik + oauth2-proxy), enable `proxy_auth` so the backend trusts
+identity headers such as `X-Auth-Request-Email`. The UI skips its own login
+screen. Only enable this when the backend is reachable solely via that proxy,
+which must overwrite the headers on every request so clients cannot spoof them.
 
 Configuration:
 ```bash
-AZURE_AD_AUTH_ENABLED=true
-AZURE_AD_TENANT_ID=your-tenant-id
-AZURE_AD_CLIENT_ID=your-app-client-id
+PROXY_AUTH_ENABLED=true
+PROXY_AUTH_USER_HEADER=X-Auth-Request-Email
+PROXY_AUTH_NAME_HEADER=X-Auth-Request-Preferred-Username
 ```
 
-### Demo: Show Both Options
+### Demo: Login options
 
-On the login screen, you'll see:
-- Azure AD button (if enabled)
+On the login screen (when API key auth is enabled and proxy auth is not):
 - API Key input field
+
+With proxy auth enabled, users land in the app already authenticated.
 
 ---
 

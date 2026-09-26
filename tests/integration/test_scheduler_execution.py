@@ -55,7 +55,77 @@ class TestSchedulerExecution:
 
         assert applied, "Scheduler did not apply the due change in time"
 
+        # Verify DNS actually received the record
+        got = test_client.get(f"/v1/zones/{zone_name}/rrsets/{unique}/A")
+        assert got.status_code == 200, got.text
+        assert "192.0.2.60" in got.json()["records"]
+
         # Cleanup
+        test_client.request(
+            "DELETE",
+            f"/v1/zones/{zone_name}/rrsets",
+            json={"name": unique, "type": "A"},
+        )
+
+    def test_prereq_failure_exhausts_retries_and_fails(
+        self, test_client: TestClient, zone_name: str
+    ):
+        """Scheduler marks change failed after max_attempts when prereq never passes."""
+        test_client.post(f"/v1/zones/{zone_name}/refresh")
+        unique = f"sched-fail-{datetime.now(UTC).strftime('%H%M%S%f')}"
+        when = (datetime.now(UTC) - timedelta(seconds=1)).isoformat()
+        expiry = (datetime.now(UTC) + timedelta(minutes=5)).isoformat()
+
+        # Seed so NXRRSET auto-prereq on add will fail
+        seed = test_client.post(
+            f"/v1/zones/{zone_name}/rrsets",
+            json={
+                "name": unique,
+                "ttl": 300,
+                "type": "A",
+                "records": ["192.0.2.62"],
+            },
+        )
+        assert seed.status_code == 201, seed.text
+
+        create = test_client.post(
+            "/v1/scheduled-changes",
+            json={
+                "name": "Scheduler fail test",
+                "zone": zone_name,
+                "scheduled_at": when,
+                "not_valid_after": expiry,
+                "operations": [
+                    {
+                        "action": "add",
+                        "name": unique,
+                        "type": "A",
+                        "ttl": 3600,
+                        "records": ["192.0.2.63"],
+                    }
+                ],
+                "auto_prerequisites": True,
+            },
+        )
+        assert create.status_code == 201, create.text
+        change_id = create.json()["id"]
+
+        failed = False
+        for _ in range(40):
+            time.sleep(0.5)
+            got = test_client.get(f"/v1/scheduled-changes/{change_id}")
+            assert got.status_code == 200
+            status = got.json()["status"]
+            if status == "failed":
+                failed = True
+                break
+            if status == "applied":
+                pytest.fail("Change should not have applied against existing RRset")
+
+        assert failed, "Scheduler did not mark the change failed after retries"
+        detail = test_client.get(f"/v1/scheduled-changes/{change_id}").json()
+        assert detail["attempts"] >= 1
+
         test_client.request(
             "DELETE",
             f"/v1/zones/{zone_name}/rrsets",

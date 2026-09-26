@@ -104,9 +104,6 @@ dns:
 
 {api_key_section}
 
-azure_ad:
-  enabled: false
-
 cache:
   enabled: true
 
@@ -204,6 +201,26 @@ def dns_config_with_auth(bind_server: BindContainer) -> Generator[Path]:
 
 
 @pytest.fixture
+def dns_config_with_proxy(bind_server: BindContainer) -> Generator[Path]:
+    """Config with proxy_auth enabled and API key auth disabled."""
+    config_yaml = _make_config_yaml(
+        bind_server,
+        auth_enabled=False,
+        extra_yaml="""
+proxy_auth:
+  enabled: true
+  user_header: X-Auth-Request-Email
+  name_header: X-Auth-Request-Preferred-Username
+""",
+    )
+    config_path = _set_config_file(config_yaml)
+
+    yield config_path
+
+    _cleanup_config_file(config_path)
+
+
+@pytest.fixture
 def test_client(dns_config: Path) -> Generator[TestClient]:
     """Create a test client WITHOUT authentication required.
 
@@ -234,6 +251,17 @@ def test_client_with_auth(dns_config_with_auth: Path) -> Generator[TestClient]:
     Yields:
         FastAPI TestClient
     """
+    from dns_zone_manager.main import create_app
+
+    app = create_app()
+
+    with TestClient(app) as client:
+        yield client
+
+
+@pytest.fixture
+def test_client_with_proxy(dns_config_with_proxy: Path) -> Generator[TestClient]:
+    """Create a test client WITH trusted reverse-proxy auth enabled."""
     from dns_zone_manager.main import create_app
 
     app = create_app()

@@ -1,108 +1,56 @@
 import { expect, test } from '@playwright/test';
-import { ensureLoggedIn } from './helpers';
+import { ensureLoggedIn, selectFirstZone } from './helpers';
 
 /**
- * Search functionality E2E tests.
- *
- * These tests verify zone-level and global search features.
+ * Search E2E — asserts filtering outcomes, not mere presence.
  */
 
-test.describe('Search Functionality', () => {
+test.describe('Search', () => {
   test.beforeEach(async ({ page }) => {
     await ensureLoggedIn(page);
+    await selectFirstZone(page);
   });
 
   test('should search within a zone', async ({ page }) => {
-    // Select example.com zone
-    await page.locator('.zone-item:has-text("example.com")').click();
-
-    // Wait for records to load (requires backend on port 8000)
-    await expect(page.locator('.card table')).toBeVisible({ timeout: 30000 });
-
-    // Find the search input
-    const searchInput = page.locator('.search-box input[type="text"]');
-    await expect(searchInput).toBeVisible();
-
-    // Search for www
-    await searchInput.fill('www');
-    await page.waitForTimeout(500); // Debounce delay
-
-    // Results should update
-    await expect(page.locator('.card')).toBeVisible();
+    const input = page.locator('.search-box input[type="text"]');
+    await expect(input).toBeVisible({ timeout: 10000 });
+    await input.fill('www');
+    // Search mode replaces the zone records view
+    await expect(page).toHaveURL(/q=www|search=www/, { timeout: 10000 });
+    await expect(page.locator('.card table tbody tr').first()).toBeVisible({
+      timeout: 15000,
+    });
+    const text = (await page.locator('.card table tbody').innerText()).toLowerCase();
+    expect(text).toContain('www');
   });
 
-  test('should clear search', async ({ page }) => {
-    // Select a zone
-    await page.locator('.zone-item').first().click();
-    await expect(page.locator('.card table')).toBeVisible({ timeout: 15000 });
-
-    // Perform a search
-    const searchInput = page.locator('.search-box input[type="text"]');
-    await searchInput.fill('test');
-    await page.waitForTimeout(500);
-
-    // Clear the search
-    await searchInput.clear();
-    await page.waitForTimeout(500);
-
-    // Table should still be visible
-    await expect(page.locator('.card table')).toBeVisible();
+  test('should clear search and restore zone records', async ({ page }) => {
+    const input = page.locator('.search-box input[type="text"]');
+    await input.fill('www');
+    await expect(page.locator('.card table tbody tr').first()).toBeVisible({
+      timeout: 15000,
+    });
+    await input.clear();
+    // Leaving search mode returns to the selected zone's records table
+    await expect(page.locator('.card-header button:has-text("Add Record")')).toBeVisible({
+      timeout: 15000,
+    });
+    await expect(page.locator('.card table tbody tr').first()).toBeVisible();
   });
 
-  test('should filter by record type', async ({ page }) => {
-    // Select example.com zone
-    await page.locator('.zone-item:has-text("example.com")').click();
-    await expect(page.locator('.card table')).toBeVisible({ timeout: 15000 });
-
-    // Find the type filter dropdown
-    const typeSelect = page.locator('.header-actions select').first();
-    if ((await typeSelect.count()) > 0) {
-      await typeSelect.selectOption('A');
-      await page.waitForTimeout(500);
-
-      // Table should still be visible
-      await expect(page.locator('.card')).toBeVisible();
-    }
-  });
-
-  test('should filter by type without search query and show results', async ({
-    page,
-  }) => {
-    // Select example.com zone
-    await page.locator('.zone-item:has-text("example.com")').click();
-    await expect(page.locator('.card table')).toBeVisible({ timeout: 15000 });
-
-    // Verify we have records visible before filtering
-    const recordRowsBefore = page.locator('.card table tbody tr');
-    const countBefore = await recordRowsBefore.count();
-    expect(countBefore).toBeGreaterThan(0);
-
-    // Find the type filter dropdown and select A records
-    const typeSelect = page.locator('.header-actions select').first();
-    await typeSelect.selectOption('A');
-
-    // Wait for the filter to be applied
-    await page.waitForTimeout(800);
-
-    // Should show search/filter results with some A records
-    // The key assertion: we should have results, not an empty state
-    const resultsTable = page.locator('.card table tbody tr');
-    await expect(resultsTable.first()).toBeVisible({ timeout: 5000 });
-
-    // Verify at least one result is shown
-    const countAfter = await resultsTable.count();
-    expect(countAfter).toBeGreaterThan(0);
-
-    // Verify all visible records are type A
-    const typeLabels = page.locator(
-      '.card table tbody tr td .record-type, .card table tbody tr td span.record-type',
-    );
-    const typeCount = await typeLabels.count();
-    expect(typeCount).toBeGreaterThan(0);
-
-    for (let i = 0; i < typeCount; i++) {
-      const typeText = await typeLabels.nth(i).textContent();
-      expect(typeText).toBe('A');
+  test('should filter by record type without search query', async ({ page }) => {
+    // The type filter sits next to the search box
+    const select = page.locator('header select').last();
+    await expect(select).toBeVisible({ timeout: 10000 });
+    await select.selectOption('A');
+    await expect(page.locator('.card table tbody tr').first()).toBeVisible({
+      timeout: 10000,
+    });
+    const rows = page.locator('.card table tbody tr');
+    const count = await rows.count();
+    expect(count).toBeGreaterThan(0);
+    for (let i = 0; i < Math.min(count, 5); i++) {
+      await expect(rows.nth(i).locator('.record-type')).toHaveText('A');
     }
   });
 });

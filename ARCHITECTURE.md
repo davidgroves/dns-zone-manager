@@ -293,7 +293,7 @@ flowchart TB
         
         subgraph "Auth"
             AK[API Key Auth]
-            AZ[Azure AD Auth]
+            PX[Proxy Header Auth]
         end
     end
     
@@ -302,7 +302,7 @@ flowchart TB
     CI --> ZC
     DC --> WD
     
-    AK & AZ --> R1 & R2 & R3 & R4 & R5 & R6
+    AK & PX --> R1 & R2 & R3 & R4 & R5 & R6
 ```
 
 ### Frontend (TypeScript/Alpine.js)
@@ -312,7 +312,7 @@ A standalone single-page application that:
 - Communicates with the backend via REST API
 - Provides zone browsing and record management
 - Supports search across all zones
-- Handles authentication (API key or Azure AD)
+- Handles authentication (API key or trusted reverse-proxy headers)
 
 ### DNS Server (BIND or compatible)
 
@@ -571,7 +571,7 @@ flowchart TB
     
     subgraph "API Authentication"
         AK[API Key<br/>X-API-Key header]
-        AZ[Azure AD<br/>Bearer token]
+        PX[Trusted Proxy<br/>X-Auth-Request-Email]
     end
     
     subgraph "DNS Authentication"
@@ -583,9 +583,9 @@ flowchart TB
     end
     
     U -->|API Key or| AK
-    U -->|Azure AD| AZ
+    U -->|Proxy headers| PX
     
-    AK & AZ -->|Authorized request| TSIG
+    AK & PX -->|Authorized request| TSIG
     TSIG -->|Signed DNS messages| BIND
 ```
 

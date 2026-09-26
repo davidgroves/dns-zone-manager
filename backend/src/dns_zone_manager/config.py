@@ -271,24 +271,6 @@ class TSIGKeyEntry(BaseModel):
     )
 
 
-class AzureADSettings(BaseSettings):
-    """Azure AD authentication settings."""
-
-    model_config = SettingsConfigDict(env_prefix="AZURE_AD_")
-
-    enabled: bool = Field(
-        default=False,
-        validation_alias=AliasChoices("enabled", "AZURE_AD_AUTH_ENABLED"),
-        description="Enable Azure AD authentication",
-    )
-    tenant_id: str = Field(default="", description="Azure AD tenant ID")
-    client_id: str = Field(default="", description="Azure AD application client ID")
-    scopes: list[str] = Field(
-        default_factory=lambda: ["api://dns-api/.default"],
-        description="Required OAuth2 scopes",
-    )
-
-
 class ProxyAuthSettings(BaseSettings):
     """Trusted reverse-proxy (forward-auth) header authentication.
 
@@ -1173,7 +1155,6 @@ class Settings(BaseSettings):
     dns: DNSSettings = Field(default_factory=DNSSettings)
 
     # Authentication settings
-    azure_ad: AzureADSettings = Field(default_factory=AzureADSettings)
     api_key: APIKeySettings = Field(default_factory=APIKeySettings)
     proxy_auth: ProxyAuthSettings = Field(default_factory=ProxyAuthSettings)
 
@@ -1316,7 +1297,6 @@ class Settings(BaseSettings):
             debug=yaml_config.get("debug", False),
             tsig_keys=tsig_keys,
             dns=from_yaml(DNSSettings, yaml_config.get("dns")),
-            azure_ad=from_yaml(AzureADSettings, yaml_config.get("azure_ad")),
             api_key=from_yaml(APIKeySettings, api_key_yaml if api_key_yaml else None),
             proxy_auth=from_yaml(ProxyAuthSettings, yaml_config.get("proxy_auth")),
             cache=from_yaml(CacheSettings, yaml_config.get("cache")),

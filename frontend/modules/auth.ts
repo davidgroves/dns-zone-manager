@@ -99,19 +99,6 @@ export function createAuthMethods(_state: AppState) {
     },
 
     /**
-     * Redirect to Azure login.
-     * Preserves current URL params so we can return to the intended page after auth.
-     */
-    loginAzure(this: MethodContext) {
-      // Preserve current URL params as return_to query param
-      const currentParams = window.location.search;
-      const returnUrl = currentParams
-        ? `${API_BASE}/auth/azure/login?return_to=${encodeURIComponent(currentParams)}`
-        : `${API_BASE}/auth/azure/login`;
-      window.location.href = returnUrl;
-    },
-
-    /**
      * Logout and clear state.
      */
     logout(this: MethodContext) {

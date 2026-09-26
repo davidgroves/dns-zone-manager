@@ -10,7 +10,7 @@ A FastAPI-based DNS record management API that communicates with BIND (or anothe
 - **DDNS Updates**: RFC 2136 compliant dynamic updates with TSIG authentication
 - **AXFR Zone Transfers**: Full zone synchronization for caching
 - **Consistency Guarantees**: PREREQ-based consistency checks ensure updates are atomic, and supports multi-user and multi-update-method situations.
-- **Dual Authentication**: Supports both Azure AD and API key authentication
+- **Dual Authentication**: API key and trusted reverse-proxy identity headers
 - **CLI Tool**: Optional command-line interface for scripting and automation
 - **YAML Configuration**: Configure via YAML file or environment variables
 - **Change Webhooks**: Notify Slack, Microsoft Teams, or any JSON endpoint when DNS changes
@@ -239,10 +239,10 @@ TSIG_KEY_ALGORITHM=hmac-sha256
 API_KEY_AUTH_ENABLED=true
 API_KEYS=admin:secret123,bot:secret456
 
-# Azure AD Authentication (optional)
-AZURE_AD_AUTH_ENABLED=false
-AZURE_AD_TENANT_ID=your-tenant-id
-AZURE_AD_CLIENT_ID=your-client-id
+# Trusted reverse-proxy identity (optional; only when backend is not public)
+PROXY_AUTH_ENABLED=false
+PROXY_AUTH_USER_HEADER=X-Auth-Request-Email
+PROXY_AUTH_NAME_HEADER=X-Auth-Request-Preferred-Username
 
 # Cache Settings
 CACHE_ENABLED=true

@@ -15,7 +15,7 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 class LoginEvent(BaseModel):
     """Login event for metrics tracking."""
 
-    auth_type: Literal["api_key", "azure_ad", "proxy"]
+    auth_type: Literal["api_key", "proxy"]
 
 
 class MetricsResponse(BaseModel):
@@ -102,7 +102,7 @@ class ValidateResponse(BaseModel):
     "/validate",
     response_model=ValidateResponse,
     summary="Validate authentication",
-    description="Validate the provided API key or token and return user information.",
+    description="Validate the provided API key or proxy identity and return user information.",
 )
 async def validate_auth(
     user: Annotated[AuthenticatedUser, Depends(get_current_user)],

@@ -168,6 +168,34 @@ class TestSearchAPIEndpoints:
         assert "results" in data
         assert "total_count" in data
         assert data["zone"] == zone_name
+        assert data["total_count"] >= 1
+        for rrset in data["results"]:
+            assert rrset["name"].lower().startswith("www.")
+
+    def test_zone_search_pagination(self, test_client: TestClient, zone_name: str):
+        """Search supports limit/offset pagination."""
+        test_client.post(f"/v1/zones/{zone_name}/refresh")
+
+        page1 = test_client.get(
+            f"/v1/zones/{zone_name}/search",
+            params={"name_pattern": ".*", "limit": 1, "offset": 0},
+        )
+        assert page1.status_code == 200, page1.text
+        data1 = page1.json()
+        assert data1["total_count"] >= 1
+        assert len(data1["results"]) == 1
+
+        if data1["total_count"] < 2:
+            pytest.skip("Need at least 2 search hits for pagination")
+
+        page2 = test_client.get(
+            f"/v1/zones/{zone_name}/search",
+            params={"name_pattern": ".*", "limit": 1, "offset": 1},
+        )
+        assert page2.status_code == 200
+        data2 = page2.json()
+        assert len(data2["results"]) == 1
+        assert data1["results"][0]["name"] != data2["results"][0]["name"]
 
     def test_zone_search_by_type(self, test_client: TestClient, zone_name: str):
         """Test per-zone search filtered by type."""

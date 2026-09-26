@@ -149,6 +149,14 @@ class BindContainer(DockerContainer):
                 allow-transfer {{ key "{self.tsig_key_name}"; }};
             }};
 
+            // Reverse zone for 192.0.2.0/24 (RFC 5737 documentation range)
+            zone "2.0.192.in-addr.arpa" {{
+                type primary;
+                file "/var/lib/bind/db.2.0.192.in-addr.arpa";
+                allow-update {{ key "{self.tsig_key_name}"; }};
+                allow-transfer {{ key "{self.tsig_key_name}"; }};
+            }};
+
             logging {{
                 channel default_log {{
                     stderr;
@@ -185,6 +193,24 @@ class BindContainer(DockerContainer):
             @       IN      TXT     "v=spf1 mx -all"
         """)
 
+    def _create_reverse_zone_file(self) -> str:
+        """Create reverse zone for 192.0.2.0/24."""
+        zone_base = self.zone_name.rstrip(".")
+        return textwrap.dedent(f"""\
+            $TTL 3600
+            $ORIGIN 2.0.192.in-addr.arpa.
+            @       IN      SOA     ns1.{zone_base}. admin.{zone_base}. (
+                                    2024010101 ; serial
+                                    3600       ; refresh
+                                    600        ; retry
+                                    604800     ; expire
+                                    300        ; minimum
+                                    )
+            @       IN      NS      ns1.{zone_base}.
+            1       IN      PTR     ns1.{zone_base}.
+            10      IN      PTR     www.{zone_base}.
+        """)
+
     def _write_config_files(self) -> None:
         """Write configuration files to temp directory."""
         config_path = Path(self._config_dir)
@@ -199,12 +225,16 @@ class BindContainer(DockerContainer):
         # Write zone file
         zone_base = self.zone_name.rstrip(".")
         (config_path / "zones" / f"db.{zone_base}").write_text(self._create_zone_file())
+        (config_path / "zones" / "db.2.0.192.in-addr.arpa").write_text(
+            self._create_reverse_zone_file()
+        )
 
         # Make files and directories accessible for dynamic updates
         # The zones directory needs to be writable for journal files
         os.chmod(config_path / "bind" / "named.conf", 0o644)
         os.chmod(config_path / "zones", 0o777)  # Directory must be writable
         os.chmod(config_path / "zones" / f"db.{zone_base}", 0o666)  # Zone file must be writable
+        os.chmod(config_path / "zones" / "db.2.0.192.in-addr.arpa", 0o666)
 
     def start(self) -> "BindContainer":
         """Start the BIND container.

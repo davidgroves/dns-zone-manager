@@ -71,7 +71,9 @@ class TestDNSRecordTypes:
     def test_type_info_has_required_fields(self):
         """Test that RecordTypeInfo has all required fields."""
         for name, info in DNS_RECORD_TYPES.items():
-            assert info.type_code > 0 or info.type_code == 0, f"{name} should have valid type_code"
+            assert info.description, f"{name} should have a description"
+            assert isinstance(info.type_code, int)
+            assert info.type_code >= 0, f"{name} should have valid type_code"
             assert info.name == name, f"{name} name should match key"
             assert info.description, f"{name} should have description"
 

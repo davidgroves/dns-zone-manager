@@ -4,7 +4,6 @@ from unittest.mock import patch
 
 import pytest
 from dns_zone_manager.auth.api_key import APIKeyUser, validate_api_key
-from dns_zone_manager.auth.azure import AzureUser
 from dns_zone_manager.auth.combined import AuthenticatedUser, get_current_user
 from dns_zone_manager.auth.proxy import ProxyUser, proxy_user_from_request
 from dns_zone_manager.config import ProxyAuthSettings
@@ -19,14 +18,13 @@ class _FakeRequest:
 
 
 def _proxy_settings(**kwargs):
-    """Build a mock settings object exposing proxy_auth (and disabled others)."""
+    """Build a mock settings object exposing proxy_auth (and disabled API key)."""
     return type(
         "MockSettings",
         (),
         {
             "proxy_auth": ProxyAuthSettings(enabled=True, **kwargs),
             "api_key": type("A", (), {"enabled": False})(),
-            "azure_ad": type("Z", (), {"enabled": False})(),
         },
     )()
 
@@ -90,45 +88,6 @@ class TestValidateAPIKey:
             assert result is None
 
 
-class TestAzureUser:
-    """Tests for AzureUser."""
-
-    def test_azure_user_creation(self):
-        """Test creating AzureUser."""
-        user = AzureUser(
-            user_id="user-123",
-            name="Test User",
-            email="test@example.com",
-            roles=["admin"],
-        )
-        assert user.user_id == "user-123"
-        assert user.name == "Test User"
-        assert user.email == "test@example.com"
-        assert "admin" in user.roles
-
-    def test_azure_user_from_claims(self):
-        """Test creating AzureUser from JWT claims."""
-        claims = {
-            "oid": "object-id-123",
-            "name": "John Doe",
-            "preferred_username": "john@example.com",
-            "roles": ["DNS.Admin"],
-        }
-        user = AzureUser.from_token_claims(claims)
-        assert user.user_id == "object-id-123"
-        assert user.name == "John Doe"
-        assert user.email == "john@example.com"
-        assert "DNS.Admin" in user.roles
-
-    def test_azure_user_from_claims_minimal(self):
-        """Test creating AzureUser from minimal claims."""
-        claims = {"sub": "subject-123"}
-        user = AzureUser.from_token_claims(claims)
-        assert user.user_id == "subject-123"
-        assert user.name is None
-        assert user.roles == []
-
-
 class TestAuthenticatedUser:
     """Tests for AuthenticatedUser."""
 
@@ -142,21 +101,6 @@ class TestAuthenticatedUser:
         assert auth_user.name == "API Key: admin"
         assert auth_user.roles is not None
         assert "api_key_user" in auth_user.roles
-
-    def test_from_azure(self):
-        """Test creating AuthenticatedUser from Azure user."""
-        azure_user = AzureUser(
-            user_id="azure-123",
-            name="Test User",
-            email="test@example.com",
-            roles=["admin"],
-        )
-        auth_user = AuthenticatedUser.from_azure(azure_user)
-
-        assert auth_user.user_id == "azure-123"
-        assert auth_user.auth_type == "azure_ad"
-        assert auth_user.name == "Test User"
-        assert auth_user.email == "test@example.com"
 
     def test_from_proxy(self):
         """Test creating AuthenticatedUser from a trusted-proxy user."""
@@ -224,7 +168,7 @@ class TestGetCurrentUserProxy:
             patch("dns_zone_manager.auth.proxy.get_settings", return_value=settings),
         ):
             req = _FakeRequest({"X-Auth-Request-Email": "dave@example.com"})
-            user = await get_current_user(req, api_key=None, bearer_token=None)
+            user = await get_current_user(req, api_key=None)
             assert user.auth_type == "proxy"
             assert user.email == "dave@example.com"
 
@@ -236,5 +180,5 @@ class TestGetCurrentUserProxy:
             patch("dns_zone_manager.auth.proxy.get_settings", return_value=settings),
         ):
             with pytest.raises(HTTPException) as exc_info:
-                await get_current_user(_FakeRequest({}), api_key=None, bearer_token=None)
+                await get_current_user(_FakeRequest({}), api_key=None)
             assert exc_info.value.status_code == 401

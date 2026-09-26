@@ -306,8 +306,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         dns_server=settings.dns.server,
         dns_port=settings.dns.port,
         tsig_key=settings.dns.update_tsig_key,
-        azure_ad_enabled=settings.azure_ad.enabled,
         api_key_enabled=settings.api_key.enabled,
+        proxy_auth_enabled=settings.proxy_auth.enabled,
         cache_enabled=settings.cache.enabled,
         catalog_enabled=settings.catalog.enabled,
         notify_enabled=settings.notify.enabled,
@@ -636,10 +636,13 @@ consistency with the authoritative DNS server.
 ## Authentication
 
 This API supports two authentication methods:
-- **Azure AD**: Bearer token authentication
-- **API Key**: X-API-Key header authentication
+- **API Key**: ``X-API-Key`` header authentication
+- **Trusted reverse proxy**: identity headers (e.g. ``X-Auth-Request-Email``)
+  set by a front proxy. Only safe when the backend is reachable solely through
+  that proxy, which must overwrite the headers on every request.
 
-At least one authentication method must be configured and used.
+At least one authentication method must be configured and used (or both may be
+disabled for anonymous local development).
 
 ## Live updates
 
@@ -649,7 +652,8 @@ WebSocket subscriptions push applied zone changes to connected clients:
 - ``WS /v1/ws`` — changes for all zones
 
 Authenticate with the same credentials as REST. Browser clients may pass
-``api_key`` or ``access_token`` as query parameters.
+``api_key`` as a query parameter. Proxy identity headers on the upgrade request
+are also accepted when proxy auth is enabled.
         """,
         version=__version__,
         docs_url="/docs",
@@ -859,7 +863,6 @@ Authenticate with the same credentials as REST. Browser clients may pass
 
         proxy_user = proxy_user_from_request(request)
         return {
-            "azureEnabled": settings.azure_ad.enabled,
             "apiKeyEnabled": settings.api_key.enabled,
             "proxyAuthEnabled": settings.proxy_auth.enabled,
             "user": ({"email": proxy_user.email, "name": proxy_user.name} if proxy_user else None),

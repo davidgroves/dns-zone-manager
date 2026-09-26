@@ -19,17 +19,16 @@ test.describe('Zone Management', () => {
   });
 
   test('should filter zones', async ({ page }) => {
-    // Filter by typing
-    await page.locator('.zone-filter-input').fill('example');
+    const before = await page.locator('.zone-item').count();
+    expect(before).toBeGreaterThan(0);
 
-    // Should filter the zone list
-    await expect(page.locator('.zone-item')).toHaveCount(1, { timeout: 5000 });
+    // Non-matching filter empties the list
+    await page.locator('.zone-filter-input').fill('zzz-no-such-zone');
+    await expect(page.locator('.zone-item')).toHaveCount(0, { timeout: 5000 });
 
-    // Clear filter
+    // Clear restores the full list
     await page.locator('.zone-filter-clear').click();
-
-    // Should restore the full list
-    await expect(page.locator('.zone-item').first()).toBeVisible();
+    await expect(page.locator('.zone-item')).toHaveCount(before, { timeout: 5000 });
   });
 
   test('should select a zone and display records', async ({ page }) => {

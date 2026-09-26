@@ -400,6 +400,37 @@ async def test_claim_due_and_lease(store: ScheduledChangeStore):
 
 
 @pytest.mark.asyncio
+async def test_claim_due_reclaims_expired_lease(store: ScheduledChangeStore):
+    """After lease_ttl elapses, another worker can claim the same change."""
+    past = datetime.now(UTC) - timedelta(seconds=5)
+    change = await store.create(
+        ChangeCreateData(
+            name="Lease reclaim",
+            zone="example.com.",
+            operations=[_op()],
+            scheduled_at=past,
+            not_valid_after=datetime.now(UTC) + timedelta(hours=1),
+        )
+    )
+
+    first = await store.claim_due("worker-1", lease_ttl=1)
+    assert first is not None
+    assert first.id == change.id
+
+    # Lease still held
+    assert await store.claim_due("worker-2", lease_ttl=60) is None
+
+    await asyncio.sleep(1.1)
+
+    reclaimed = await store.claim_due("worker-2", lease_ttl=60)
+    assert reclaimed is not None
+    assert reclaimed.id == change.id
+    assert reclaimed.status == "running"
+    # Attempts increment on each claim
+    assert reclaimed.attempts >= 2
+
+
+@pytest.mark.asyncio
 async def test_mark_applied(store: ScheduledChangeStore):
     past = datetime.now(UTC) - timedelta(seconds=5)
     change = await store.create(

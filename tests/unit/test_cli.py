@@ -468,8 +468,8 @@ www     3600    IN      A       192.0.2.1
             result = runner.invoke(cli, ["--api-key", "test-key", "-v", "export", "example.com"])
 
         assert result.exit_code == 0
-        # Verbose output goes to stderr
-        assert "GET /zones/example.com/export" in result.output or result.exit_code == 0
+        # Verbose request line goes to stderr (mixed into CliRunner.output)
+        assert "GET /zones/example.com/export" in result.output
 
 
 class TestNsupdate:

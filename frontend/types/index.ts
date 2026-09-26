@@ -361,7 +361,6 @@ export interface AppState {
   apiKey: string | null;
   apiKeyInput: string;
   loginError: string;
-  azureEnabled: boolean;
   apiKeyEnabled: boolean;
   proxyAuthEnabled: boolean;
   currentUser: string | null;
@@ -543,7 +542,6 @@ export interface ThemeConfig {
 }
 
 export interface AppConfig {
-  azureEnabled?: boolean;
   apiKeyEnabled?: boolean;
   proxyAuthEnabled?: boolean;
   version?: string;

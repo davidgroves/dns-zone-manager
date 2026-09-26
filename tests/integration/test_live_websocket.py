@@ -114,3 +114,22 @@ class TestLiveZoneWebSocketAuth:
         ) as ws:
             msg = ws.receive_json()
             assert msg["type"] == "subscribed"
+
+    def test_invalid_api_key_rejected(
+        self, test_client_with_auth: TestClient, zone_name: str
+    ) -> None:
+        with pytest.raises(Exception):
+            with test_client_with_auth.websocket_connect(
+                f"/v1/zones/{zone_name}/ws?api_key=wrong-key"
+            ):
+                pass
+
+    def test_api_key_header_accepted(
+        self, test_client_with_auth: TestClient, zone_name: str
+    ) -> None:
+        with test_client_with_auth.websocket_connect(
+            f"/v1/zones/{zone_name}/ws",
+            headers={"x-api-key": "integration-test-key-12345"},
+        ) as ws:
+            msg = ws.receive_json()
+            assert msg["type"] == "subscribed"

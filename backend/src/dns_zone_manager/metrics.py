@@ -6,7 +6,7 @@ from prometheus_client import Counter, Gauge, Histogram
 logins_total = Counter(
     "dns_zone_manager_logins_total",
     "Total number of UI login actions",
-    ["auth_type"],  # api_key, azure_ad
+    ["auth_type"],  # api_key, proxy
 )
 
 logouts_total = Counter(

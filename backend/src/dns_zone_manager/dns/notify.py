@@ -157,8 +157,28 @@ class NotifyListener:
             Response bytes to send back, or None if no response needed
         """
         try:
-            # Parse the DNS message
-            message = dns.message.from_wire(data)
+            # Parse with keyring when configured so TSIG-signed NOTIFYs verify
+            # during from_wire (dnspython refuses signed messages without one).
+            if self.keyring is not None:
+                try:
+                    message = dns.message.from_wire(data, keyring=self.keyring)
+                except (
+                    dns.tsig.PeerBadKey,
+                    dns.tsig.PeerBadSignature,
+                    dns.tsig.PeerBadTime,
+                ) as e:
+                    log_internal_event(
+                        "notify_tsig_failed",
+                        logger,
+                        level="WARNING",
+                        error=str(e),
+                        source=f"{addr[0]}:{addr[1]}",
+                        transport=transport,
+                    )
+                    notifies_rejected_total.labels(transport=transport, reason="tsig_failed").inc()
+                    return None
+            else:
+                message = dns.message.from_wire(data)
 
             # Verify it's a NOTIFY message
             if message.opcode() != dns.opcode.NOTIFY:

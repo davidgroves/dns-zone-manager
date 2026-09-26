@@ -23,7 +23,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Concatenate
 
-from sqlalchemy import Text, cast, delete, func, insert, or_, select, text, update
+from sqlalchemy import Text, and_, cast, delete, func, insert, or_, select, text, update
 from sqlalchemy.engine.row import RowMapping
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
@@ -773,7 +773,6 @@ class ScheduledChangeStore:
         due = (
             select(scheduled_changes.c.id)
             .where(
-                scheduled_changes.c.status == "scheduled",
                 scheduled_changes.c.scheduled_at.is_not(None),
                 scheduled_changes.c.scheduled_at <= now,
                 or_(
@@ -781,8 +780,20 @@ class ScheduledChangeStore:
                     scheduled_changes.c.next_attempt_at <= now,
                 ),
                 or_(
-                    scheduled_changes.c.lease_expires_at.is_(None),
-                    scheduled_changes.c.lease_expires_at < now,
+                    # Normal due work
+                    and_(
+                        scheduled_changes.c.status == "scheduled",
+                        or_(
+                            scheduled_changes.c.lease_expires_at.is_(None),
+                            scheduled_changes.c.lease_expires_at < now,
+                        ),
+                    ),
+                    # Crash recovery: previous worker died while holding a lease
+                    and_(
+                        scheduled_changes.c.status == "running",
+                        scheduled_changes.c.lease_expires_at.is_not(None),
+                        scheduled_changes.c.lease_expires_at < now,
+                    ),
                 ),
             )
             .order_by(scheduled_changes.c.scheduled_at)

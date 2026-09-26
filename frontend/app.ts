@@ -374,7 +374,6 @@ export function createApp(config: AppConfig) {
       });
 
       // Parse URL params early to capture intended route
-      const urlParams = new URLSearchParams(window.location.search);
       const routeParams = parseUrlParams();
 
       // Store intended route if there's something meaningful in the URL
@@ -395,7 +394,6 @@ export function createApp(config: AppConfig) {
         const response = await fetch('/ui/config');
         if (response.ok) {
           const uiConfig = await response.json();
-          self.azureEnabled = uiConfig.azureEnabled ?? false;
           self.apiKeyEnabled = uiConfig.apiKeyEnabled ?? true;
           self.proxyAuthEnabled = uiConfig.proxyAuthEnabled ?? false;
           self.currentUser = uiConfig.user?.email ?? null;
@@ -423,33 +421,9 @@ export function createApp(config: AppConfig) {
       }
 
       // No auth methods configured — allow anonymous access without a login screen.
-      if (!self.apiKeyEnabled && !self.azureEnabled) {
+      if (!self.apiKeyEnabled) {
         self.authenticated = true;
         self.currentUser = 'anonymous';
-        self.trackLogin('none');
-        if (self.intendedRoute) {
-          await self.navigateToRoute(self.intendedRoute);
-        } else {
-          await self.loadZones();
-          self.updateUrlFromState();
-        }
-        return;
-      }
-
-      // Check for Azure callback - azure_token param means we're returning from Azure login
-      if (urlParams.has('azure_token')) {
-        self.authenticated = true;
-        self.trackLogin('azure_ad');
-
-        // Clean up the azure_token from URL but preserve route params
-        const cleanParams = new URLSearchParams(window.location.search);
-        cleanParams.delete('azure_token');
-        const cleanUrl = cleanParams.toString()
-          ? `${window.location.pathname}?${cleanParams.toString()}`
-          : window.location.pathname;
-        window.history.replaceState(null, '', cleanUrl);
-
-        // Navigate to intended route or load zones
         if (self.intendedRoute) {
           await self.navigateToRoute(self.intendedRoute);
         } else {

@@ -79,23 +79,6 @@ api_key:
       secret: another-key-67890
 
 # =============================================================================
-# Azure AD Authentication (optional)
-# =============================================================================
-azure_ad:
-  # Enable Azure AD authentication
-  enabled: false
-
-  # Azure AD tenant ID
-  tenant_id: ""
-
-  # Azure AD application client ID
-  client_id: ""
-
-  # OAuth2 scopes (list)
-  scopes:
-    - api://dns-zone-manager/.default
-
-# =============================================================================
 # Trusted Reverse-Proxy (forward-auth) Authentication (optional)
 # =============================================================================
 # When enabled, the app trusts an identity header injected by a front proxy

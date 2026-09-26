@@ -94,7 +94,7 @@ class TestSuccessEmission:
             ChangeContext(
                 actor="alice@example.com",
                 actor_name="Alice Example",
-                auth_type="azure_ad",
+                auth_type="proxy",
                 request_id="req_123",
             )
         )
@@ -105,7 +105,7 @@ class TestSuccessEmission:
         event = dispatcher.events[0]
         assert event.actor == "alice@example.com"
         assert event.actor_name == "Alice Example"
-        assert event.auth_type == "azure_ad"
+        assert event.auth_type == "proxy"
         assert event.request_id == "req_123"
 
     def test_manual_write_mints_change_id_for_autorecording(self):

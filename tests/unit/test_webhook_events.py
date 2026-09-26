@@ -55,7 +55,7 @@ def _event(**overrides) -> DnsChangeEvent:
         "trigger": TRIGGER_MANUAL,
         "actor": "alice@example.com",
         "actor_name": "Alice Example",
-        "auth_type": "azure_ad",
+        "auth_type": "proxy",
         "change_id": "abc-123",
         "rcode": "NOERROR",
     }
@@ -254,7 +254,7 @@ class TestEventModel:
             "id": "alice@example.com",
             "name": "Alice Example",
             "email": None,
-            "auth_type": "azure_ad",
+            "auth_type": "proxy",
         }
         assert payload["change"]["link"].endswith("change=abc-123")
         assert payload["operations"][0]["records"] == ["10.0.0.1"]

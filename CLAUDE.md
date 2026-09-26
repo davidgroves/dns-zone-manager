@@ -30,7 +30,7 @@ This file provides context for AI assistants working on this codebase.
 backend/src/dns_zone_manager/ # Python backend (FastAPI)
 ├── routers/                  # API endpoints
 ├── dns/                      # DNS client, cache, types
-├── auth/                     # API key + Azure AD auth
+├── auth/                     # API key + trusted reverse-proxy auth
 ├── models/                   # Pydantic models
 ├── scheduler/                # Scheduled change store (SQLite or PostgreSQL)
 │   ├── schema.py             # SQLAlchemy MetaData: one definition, both dialects

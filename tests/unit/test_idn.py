@@ -235,7 +235,9 @@ class TestDecodeEscapedUtf8:
         # Only valid \\DDD patterns should be decoded
         result = decode_escaped_utf8("test\\n\\231\\189\\145")
         # Should decode the UTF-8 but leave \\n alone
-        assert "网" in result if result else True
+        assert result is not None
+        assert "网" in result
+        assert "\\n" in result or "test" in result
 
 
 class TestGetIdnInfo:

@@ -10,7 +10,6 @@ export function createInitialState(config: AppConfig): AppState {
     apiKey: null,
     apiKeyInput: '',
     loginError: '',
-    azureEnabled: config.azureEnabled ?? false,
     apiKeyEnabled: config.apiKeyEnabled ?? true,
     proxyAuthEnabled: config.proxyAuthEnabled ?? false,
     currentUser: null,

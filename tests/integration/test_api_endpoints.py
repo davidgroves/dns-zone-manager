@@ -196,6 +196,10 @@ class TestAddRRset:
             },
         )
         assert response.status_code == 201
+        assert response.json()["success"] is True
+        got = test_client.get(f"/v1/zones/{zone_name}/rrsets/api-test-ipv6/AAAA")
+        assert got.status_code == 200
+        assert "2001:db8::100" in got.json()["records"]
 
     def test_add_txt_record(self, test_client: TestClient, zone_name: str):
         """Test adding a TXT record."""
@@ -209,6 +213,9 @@ class TestAddRRset:
             },
         )
         assert response.status_code == 201
+        got = test_client.get(f"/v1/zones/{zone_name}/rrsets/api-test-txt/TXT")
+        assert got.status_code == 200
+        assert any("test=value" in r for r in got.json()["records"])
 
     def test_add_mx_record(self, test_client: TestClient, zone_name: str):
         """Test adding an MX record."""
@@ -222,6 +229,9 @@ class TestAddRRset:
             },
         )
         assert response.status_code == 201
+        got = test_client.get(f"/v1/zones/{zone_name}/rrsets/api-test-mx/MX")
+        assert got.status_code == 200
+        assert any("mail.test.example" in r for r in got.json()["records"])
 
     def test_add_cname_record(self, test_client: TestClient, zone_name: str):
         """Test adding a CNAME record."""
@@ -235,6 +245,9 @@ class TestAddRRset:
             },
         )
         assert response.status_code == 201
+        got = test_client.get(f"/v1/zones/{zone_name}/rrsets/api-test-cname/CNAME")
+        assert got.status_code == 200
+        assert any("www.test.example" in r for r in got.json()["records"])
 
     def test_add_multiple_records(self, test_client: TestClient, zone_name: str):
         """Test adding multiple records in one RRset."""

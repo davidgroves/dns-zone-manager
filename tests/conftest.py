@@ -24,9 +24,6 @@ api_key:
     - name: test
       secret: test-api-key-12345
 
-azure_ad:
-  enabled: false
-
 cache:
   enabled: true
 

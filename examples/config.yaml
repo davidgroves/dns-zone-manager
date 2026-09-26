@@ -35,10 +35,6 @@ api_key:
     - name: readonly
       secret: another-key-67890
 
-# Azure AD disabled for demo
-azure_ad:
-  enabled: false
-
 # Cache Configuration
 cache:
   enabled: true

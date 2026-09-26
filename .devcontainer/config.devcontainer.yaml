@@ -25,12 +25,8 @@ dns:
   update_tsig_key: dns-api-key
 
 # No authentication in the devcontainer — anonymous access is intentional.
-# Re-enable api_key / azure_ad / proxy_auth here if you need to exercise them.
+# Re-enable api_key / proxy_auth here if you need to exercise them.
 api_key:
-  enabled: false
-
-# Azure AD disabled for local dev
-azure_ad:
   enabled: false
 
 # Cache Configuration

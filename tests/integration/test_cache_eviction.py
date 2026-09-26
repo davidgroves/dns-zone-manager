@@ -209,9 +209,6 @@ dns:
 api_key:
   enabled: false
 
-azure_ad:
-  enabled: false
-
 cache:
   enabled: true
   max_size_bytes: 30000
@@ -452,9 +449,6 @@ dns:
   update_tsig_key: {tsig_name}
 
 api_key:
-  enabled: false
-
-azure_ad:
   enabled: false
 
 cache:

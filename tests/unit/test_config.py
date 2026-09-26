@@ -5,7 +5,6 @@ from unittest.mock import patch
 
 from dns_zone_manager.config import (
     APIKeySettings,
-    AzureADSettings,
     CacheSettings,
     DNSSettings,
     TSIGKeyEntry,
@@ -73,32 +72,6 @@ class TestTSIGKeyEntry:
         """Test TSIG key entry default algorithm."""
         entry = TSIGKeyEntry(name="test", secret="dGVzdA==")  # type: ignore
         assert entry.algorithm == "hmac-sha256"
-
-
-class TestAzureADSettings:
-    """Tests for AzureADSettings."""
-
-    def test_azure_ad_disabled_by_default(self):
-        """Test Azure AD is disabled by default."""
-        with patch.dict(os.environ, {}, clear=True):
-            settings = AzureADSettings()
-            assert not settings.enabled
-
-    def test_azure_ad_settings_from_env(self):
-        """Test loading Azure AD settings from environment."""
-        with patch.dict(
-            os.environ,
-            {
-                "AZURE_AD_AUTH_ENABLED": "true",
-                "AZURE_AD_TENANT_ID": "test-tenant",
-                "AZURE_AD_CLIENT_ID": "test-client",
-            },
-            clear=True,
-        ):
-            settings = AzureADSettings()
-            assert settings.enabled
-            assert settings.tenant_id == "test-tenant"
-            assert settings.client_id == "test-client"
 
 
 class TestAPIKeySettings:

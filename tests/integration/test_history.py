@@ -222,20 +222,21 @@ class TestRollbackEndpoint:
         )
 
         # Try to rollback to serial before second change
-        # This may fail if BIND doesn't have incremental history
         response = test_client.post(
             f"/v1/zones/{zone_name}/history/rollback",
             json={"target_serial": serial_after_first_change},
         )
 
-        # Could be 200 (success), 400 (history not available), or 409 (conflict)
-        assert response.status_code in [200, 400, 409]
+        if response.status_code in (400, 409):
+            pytest.skip(
+                f"BIND journal/IXFR rollback unavailable: {response.status_code} {response.text}"
+            )
 
-        if response.status_code == 200:
-            data = response.json()
-            assert data["success"] is True
-            assert "new_serial" in data
-            assert "changes_applied" in data
+        assert response.status_code == 200, response.text
+        data = response.json()
+        assert data["success"] is True
+        assert "new_serial" in data
+        assert "changes_applied" in data
 
         # Cleanup - delete any remaining test records
         for name in ["rollback-test-1", "rollback-test-2"]:

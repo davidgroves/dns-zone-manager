@@ -8,7 +8,7 @@ export async function backendRequiresLogin(page: Page): Promise<boolean> {
     return true;
   }
   const config = await response.json();
-  return Boolean(config.apiKeyEnabled || config.azureEnabled || config.proxyAuthEnabled);
+  return Boolean(config.apiKeyEnabled || config.proxyAuthEnabled);
 }
 
 /**
@@ -39,4 +39,15 @@ export async function ensureLoggedIn(page: Page): Promise<void> {
   await expect(page.locator('.zone-item').first()).toBeVisible({
     timeout: 30000,
   });
+}
+
+/** Select the primary example.com zone and wait for the records table. */
+export async function selectFirstZone(page: Page): Promise<void> {
+  const example = page.locator('.zone-item:has-text("example.com")');
+  if ((await example.count()) > 0) {
+    await example.first().click();
+  } else {
+    await page.locator('.zone-item').first().click();
+  }
+  await expect(page.locator('.card table')).toBeVisible({ timeout: 30000 });
 }

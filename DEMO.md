@@ -332,9 +332,17 @@ In the tmux session, switch to window 1 (FastAPI) to see logs as you interact wi
 
 ---
 
-## 10. Prometheus Metrics
+## 10. Prometheus Metrics & Grafana LGTM
 
-The application exposes Prometheus metrics for monitoring.
+The application exposes Prometheus metrics at `/metrics`. The examples and
+devcontainer stacks run **Grafana LGTM** (`grafana/otel-lgtm`), which scrapes
+those metrics and receives logs over OTLP into Loki.
+
+### Grafana
+
+- **UI**: http://localhost:3000 — home dashboard **DNS Zone Manager**
+- **Logs**: Explore → Loki → `{service_name="dns-zone-manager"}`
+- Provisioned files live under `examples/observability/`
 
 ### Metrics Endpoint
 

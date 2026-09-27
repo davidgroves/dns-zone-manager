@@ -290,12 +290,15 @@ def should_sample(
 def configure_logging(
     log_format: str = "json",
     log_level: str = "INFO",
+    otlp_endpoint: str | None = None,
 ) -> None:
     """Configure application logging.
 
     Args:
         log_format: "json" for structured JSON output, "text" for human-readable
         log_level: Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+        otlp_endpoint: Optional OTLP HTTP base URL (e.g. http://lgtm:4318). When
+            set, logs are also exported to Loki via the OpenTelemetry Collector.
     """
     # Get root logger
     root_logger = logging.getLogger()
@@ -317,11 +320,61 @@ def configure_logging(
 
     root_logger.addHandler(handler)
 
+    if otlp_endpoint:
+        _configure_otlp_logging(otlp_endpoint, log_level)
+
     # Reduce noise from third-party libraries
     logging.getLogger("uvicorn").setLevel(logging.WARNING)
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+    logging.getLogger("opentelemetry").setLevel(logging.WARNING)
+
+
+def _configure_otlp_logging(otlp_endpoint: str, log_level: str) -> None:
+    """Attach an OpenTelemetry LoggingHandler that exports to the OTLP endpoint.
+
+    Logs flow: app → OTLP HTTP → otel-lgtm collector → Loki.
+    """
+    import os
+
+    try:
+        from opentelemetry._logs import set_logger_provider
+        from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
+        from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+        from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
+        from opentelemetry.sdk.resources import Resource
+    except ImportError:
+        logging.getLogger(__name__).warning(
+            "OTLP log export requested (%s) but OpenTelemetry packages are not "
+            "installed; install the api extra to enable Loki shipping",
+            otlp_endpoint,
+        )
+        return
+
+    service_name = os.environ.get("OTEL_SERVICE_NAME", "dns-zone-manager")
+    resource = Resource.create(
+        {
+            "service.name": service_name,
+            "service.namespace": "dns-zone-manager",
+        }
+    )
+    provider = LoggerProvider(resource=resource)
+    # Endpoint is the OTLP base URL; the exporter appends /v1/logs.
+    exporter = OTLPLogExporter(endpoint=f"{otlp_endpoint.rstrip('/')}/v1/logs")
+    provider.add_log_record_processor(BatchLogRecordProcessor(exporter))
+    set_logger_provider(provider)
+
+    otlp_handler = LoggingHandler(
+        level=getattr(logging, log_level.upper()),
+        logger_provider=provider,
+    )
+    logging.getLogger().addHandler(otlp_handler)
+    logging.getLogger(__name__).info(
+        "OTLP log export enabled",
+        extra={"otlp_endpoint": otlp_endpoint, "service_name": service_name},
+    )
 
 
 def emit_wide_event(wide_event: WideEvent, logger: logging.Logger | None = None) -> None:

@@ -464,6 +464,20 @@ class LoggingSettings(BaseSettings):
         default=1000,
         description="Always log requests slower than this (milliseconds)",
     )
+    otlp_endpoint: str | None = Field(
+        default=None,
+        description=(
+            "OTLP HTTP base URL for log export (e.g. http://lgtm:4318). "
+            "When unset, falls back to the OTEL_EXPORTER_OTLP_ENDPOINT environment variable."
+        ),
+    )
+
+    def resolved_otlp_endpoint(self) -> str | None:
+        """Return the configured OTLP endpoint, honouring the standard OTEL env var."""
+        if self.otlp_endpoint:
+            return self.otlp_endpoint.rstrip("/")
+        env = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "").strip()
+        return env.rstrip("/") or None
 
 
 class NotifySettings(BaseSettings):

@@ -4,6 +4,7 @@
 # - PostgreSQL storing scheduled changes and the audit log
 # - FastAPI DNS management API (backend)
 # - Nginx serving the Vite frontend (proxies API calls to FastAPI)
+# - Grafana LGTM (Loki + Grafana + Tempo + Prometheus) for logs and metrics
 #
 # Usage:
 #   1. Copy config.example.yaml to config.yaml and customize
@@ -124,6 +125,10 @@ services:
     volumes:
       # Mount config file (copy config.example.yaml to config.yaml and customize)
       - ./config.yaml:/app/config.yaml:ro
+    environment:
+      # Ship structured logs to Loki via the LGTM OTLP collector
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://lgtm:4318
+      - OTEL_SERVICE_NAME=dns-zone-manager
     ports:
       - "5354:5354/tcp"
       - "5354:5354/udp"
@@ -189,6 +194,31 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # Grafana LGTM (Loki + Grafana + Tempo + Prometheus/Mimir + OTel Collector).
+  # Scrapes /metrics from dns-zone-manager; receives OTLP logs on :4318.
+  lgtm:
+    image: grafana/otel-lgtm:latest
+    container_name: dns-lgtm
+    hostname: lgtm
+    environment:
+      - TZ=UTC
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/otel-lgtm/grafana/conf/provisioning/dashboards/custom/dns-zone-manager.json
+    ports:
+      - "3000:3000"   # Grafana UI
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+    volumes:
+      - ./observability/otelcol-config.yaml:/otel-lgtm/otelcol-config.yaml:ro
+      - ./observability/dashboards/provisioning.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/custom.yaml:ro
+      - ./observability/dashboards/dns-zone-manager.json:/otel-lgtm/grafana/conf/provisioning/dashboards/custom/dns-zone-manager.json:ro
+      - lgtm-data:/data
+    networks:
+      - dns-network
+    depends_on:
+      dns-zone-manager:
+        condition: service_healthy
+    restart: unless-stopped
+
 networks:
   # No static subnet: Docker assigns an available subnet automatically so the
   # stack never conflicts with other networks on the host.
@@ -198,3 +228,4 @@ networks:
 volumes:
   bind-zones:
   postgres-data:
+  lgtm-data:

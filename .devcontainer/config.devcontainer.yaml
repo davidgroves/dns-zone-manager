@@ -106,6 +106,8 @@ logging:
   level: DEBUG
   sample_rate: 1.0
   slow_threshold_ms: 1000
+  # Ship logs to Loki via grafana/otel-lgtm (compose service `lgtm`)
+  otlp_endpoint: http://lgtm:4318
 
 # Enable debug mode
 debug: true

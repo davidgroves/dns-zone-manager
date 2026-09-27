@@ -34,6 +34,8 @@ docker compose logs -f
 | bind | 15353 | BIND 9 DNS Server |
 | bind | 15953 | BIND 9 RNDC control port |
 | postgres | 15432 | PostgreSQL store for scheduled changes and the audit log |
+| lgtm | 3000 | Grafana UI (Loki + Prometheus + Tempo) |
+| lgtm | 4317/4318 | OTLP gRPC / HTTP (logs → Loki) |
 
 ## Access Points
 
@@ -44,6 +46,16 @@ The DNS Zone Editor web interface is available at:
 - **Web UI**: http://localhost:8000
 
 Sign in using one of the example API keys: `demo-api-key-12345`
+
+### Grafana (LGTM)
+
+Observability stack (`grafana/otel-lgtm`) scrapes `/metrics` and receives OTLP logs:
+
+- **Grafana**: http://localhost:3000 (open the **DNS Zone Manager** dashboard)
+- **Logs**: Explore → Loki → `{service_name="dns-zone-manager"}`
+- **Metrics**: Explore → Prometheus → `dns_zone_manager_*`
+
+Config lives in `examples/observability/` (collector scrape config + provisioned dashboard).
 
 ### OpenAPI Documentation (Swagger UI)
 

@@ -59,6 +59,7 @@ _settings = get_settings()
 configure_logging(
     log_format=_settings.logging.format,
     log_level="DEBUG" if _settings.debug else _settings.logging.level,
+    otlp_endpoint=_settings.logging.resolved_otlp_endpoint(),
 )
 logger = logging.getLogger(__name__)
 

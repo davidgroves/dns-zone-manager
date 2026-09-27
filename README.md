@@ -14,6 +14,7 @@ A FastAPI-based DNS record management API that communicates with BIND (or anothe
 - **CLI Tool**: Optional command-line interface for scripting and automation
 - **YAML Configuration**: Configure via YAML file or environment variables
 - **Change Webhooks**: Notify Slack, Microsoft Teams, or any JSON endpoint when DNS changes
+- **Observability**: Prometheus `/metrics`, OTLP logs to Loki, Grafana LGTM in examples/devcontainer
 
 ## Container images
 

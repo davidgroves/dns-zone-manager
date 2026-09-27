@@ -12,7 +12,10 @@ repos:
     hooks:
       - id: ty
         name: ty type check
-        entry: uv run ty check backend
+        # Call the venv binary directly — `uv run` can recreate .venv mid-hook
+        # when the interpreter pin drifts, which then fails with "ty: No such
+        # file or directory" / "No module named pre_commit".
+        entry: .venv/bin/ty check backend
         language: system
         types: [python]
         pass_filenames: false

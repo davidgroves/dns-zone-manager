@@ -132,6 +132,36 @@ class TestAPIKeySettings:
             assert settings.keys == {}
 
 
+class TestLoggingSettings:
+    """Tests for LoggingSettings OTLP resolution."""
+
+    def test_otlp_endpoint_from_field(self):
+        from dns_zone_manager.config import LoggingSettings
+
+        settings = LoggingSettings(otlp_endpoint="http://lgtm:4318/")
+        assert settings.resolved_otlp_endpoint() == "http://lgtm:4318"
+
+    def test_otlp_endpoint_from_env(self):
+        from dns_zone_manager.config import LoggingSettings
+
+        with patch.dict(
+            os.environ,
+            {"OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4318"},
+            clear=False,
+        ):
+            settings = LoggingSettings()
+            assert settings.resolved_otlp_endpoint() == "http://otel:4318"
+
+    def test_otlp_endpoint_none_by_default(self):
+        from dns_zone_manager.config import LoggingSettings
+
+        with patch.dict(os.environ, {}, clear=True):
+            # clear=True drops OTEL_EXPORTER_OTLP_ENDPOINT if present
+            os.environ.pop("OTEL_EXPORTER_OTLP_ENDPOINT", None)
+            settings = LoggingSettings()
+            assert settings.resolved_otlp_endpoint() is None
+
+
 class TestCacheSettings:
     """Tests for CacheSettings."""
 

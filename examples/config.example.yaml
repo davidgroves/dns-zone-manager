@@ -378,6 +378,11 @@ logging:
   # Always log requests slower than this (milliseconds)
   slow_threshold_ms: 1000
 
+  # Optional OTLP HTTP endpoint for shipping logs to Loki (via grafana/otel-lgtm).
+  # Example: http://lgtm:4318
+  # Also honoured via OTEL_EXPORTER_OTLP_ENDPOINT.
+  # otlp_endpoint: http://lgtm:4318
+
 # =============================================================================
 # Frontend Theme / Branding
 # =============================================================================

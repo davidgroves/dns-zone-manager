@@ -1,5 +1,6 @@
 # DNS Zone Manager Devcontainer Environment
-# Provides a development container, a BIND DNS server, and PostgreSQL.
+# Provides a development container, a BIND DNS server, PostgreSQL, and
+# Grafana LGTM (Loki + Grafana + Tempo + Prometheus) for logs and metrics.
 #
 # No static IPs/subnet are used. BIND's also-notify directive requires an IP
 # address (it does not support hostnames), so the BIND entrypoint resolves the
@@ -8,6 +9,7 @@
 #   dev:      receives NOTIFY on port 15354
 #   bind:     DNS on 15353, RNDC on 953
 #   postgres: scheduled change store on 5432 (also published on host 15432)
+#   lgtm:     Grafana on 3000, OTLP on 4317/4318
 
 services:
   # Development container - VS Code/Cursor connects here
@@ -21,6 +23,9 @@ services:
     command: sleep infinity
     environment:
       - TZ=UTC
+      # Ship structured logs to Loki via the LGTM OTLP collector
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://lgtm:4318
+      - OTEL_SERVICE_NAME=dns-zone-manager
     # Expose ports directly (more reliable than VS Code forwardPorts on macOS)
     ports:
       - "5173:5173"   # Vite frontend
@@ -162,9 +167,33 @@ services:
     networks:
       - devnet
 
+  # Grafana LGTM (Loki + Grafana + Tempo + Prometheus/Mimir + OTel Collector).
+  # Scrapes /metrics from the API in the `dev` container; receives OTLP logs on :4318.
+  lgtm:
+    image: grafana/otel-lgtm:latest
+    hostname: lgtm
+    environment:
+      - TZ=UTC
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/otel-lgtm/grafana/conf/provisioning/dashboards/custom/dns-zone-manager.json
+    ports:
+      - "3000:3000"   # Grafana UI
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+    volumes:
+      - ../examples/observability/otelcol-config.yaml:/otel-lgtm/otelcol-config.yaml:ro
+      - ../examples/observability/dashboards/provisioning.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/custom.yaml:ro
+      - ../examples/observability/dashboards/dns-zone-manager.json:/otel-lgtm/grafana/conf/provisioning/dashboards/custom/dns-zone-manager.json:ro
+      - lgtm-data:/data
+    networks:
+      - devnet
+    restart: unless-stopped
+
 networks:
   # No static subnet: Docker assigns an available subnet automatically so the
   # devcontainer network never conflicts with other networks on the host.
   devnet:
     driver: bridge
+
+volumes:
+  lgtm-data:
 

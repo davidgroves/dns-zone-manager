@@ -44,3 +44,11 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 # dns-api-key.conf: allows 'nsupdate -k /etc/dns-api-key.conf' or 'dig -k /etc/dns-api-key.conf'
 COPY .devcontainer/rndc.devcontainer.conf /etc/rndc.conf
 COPY .devcontainer/dns-api-key.conf /etc/dns-api-key.conf
+
+# Disable core dumps — Playwright/WebKit crashes otherwise leave multi-GB
+# core.* files in the workspace when ulimit -c is unlimited.
+RUN printf '%s\n' '# Soft limit for all sessions' '* soft core 0' '* hard core 0' \
+        >> /etc/security/limits.conf \
+    && printf '%s\n' 'ulimit -c 0' > /etc/profile.d/disable-coredumps.sh \
+    && printf '\n# Disable core dumps (Playwright/WebKit can dump multi-GB files)\nulimit -c 0\n' \
+        >> /home/vscode/.bashrc

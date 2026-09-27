@@ -5,7 +5,7 @@ import hmac
 import json
 from datetime import UTC, datetime
 
-import httpx
+import httpx2 as httpx
 import pytest
 from dns_zone_manager.config import WebhookAuth, WebhookSettings, WebhookTarget
 from dns_zone_manager.notifications.auth import build_auth_headers, redact

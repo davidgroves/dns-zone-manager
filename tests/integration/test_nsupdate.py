@@ -4,7 +4,7 @@ from collections.abc import AsyncGenerator
 
 import pytest
 from dns_zone_manager.main import create_app
-from httpx import ASGITransport, AsyncClient
+from httpx2 import ASGITransport, AsyncClient
 
 
 @pytest.fixture
@@ -24,21 +24,24 @@ def nsupdate_app_with_auth(dns_env_with_auth: dict):
 @pytest.fixture
 async def nsupdate_client(nsupdate_app) -> AsyncGenerator[AsyncClient]:
     """Create async HTTP client for NSUPDATE tests (no auth required)."""
-    async with AsyncClient(
-        transport=ASGITransport(app=nsupdate_app),
-        base_url="http://test",
-    ) as client:
-        yield client
+    # httpx2 ASGITransport omits lifespan; enter it so DNS client is injected.
+    async with nsupdate_app.router.lifespan_context(nsupdate_app):
+        async with AsyncClient(
+            transport=ASGITransport(app=nsupdate_app),
+            base_url="http://test",
+        ) as client:
+            yield client
 
 
 @pytest.fixture
 async def nsupdate_client_with_auth(nsupdate_app_with_auth) -> AsyncGenerator[AsyncClient]:
     """Create async HTTP client for NSUPDATE tests (auth required)."""
-    async with AsyncClient(
-        transport=ASGITransport(app=nsupdate_app_with_auth),
-        base_url="http://test",
-    ) as client:
-        yield client
+    async with nsupdate_app_with_auth.router.lifespan_context(nsupdate_app_with_auth):
+        async with AsyncClient(
+            transport=ASGITransport(app=nsupdate_app_with_auth),
+            base_url="http://test",
+        ) as client:
+            yield client
 
 
 @pytest.mark.integration

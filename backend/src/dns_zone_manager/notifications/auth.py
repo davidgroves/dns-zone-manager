@@ -94,7 +94,7 @@ def target_secrets(target: WebhookTarget) -> list[str]:
 def redact(message: str, target: WebhookTarget) -> str:
     """Replace any of the target's secrets appearing in a message.
 
-    httpx error messages embed the request URL, which is itself the credential
+    httpx2 error messages embed the request URL, which is itself the credential
     for Slack and Teams, so anything derived from an exception must pass
     through here before being logged.
     """

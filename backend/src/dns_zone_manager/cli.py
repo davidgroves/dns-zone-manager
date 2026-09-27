@@ -11,7 +11,7 @@ Configuration via environment variables:
 # Check for required dependencies before importing
 try:
     import click
-    import httpx
+    import httpx2 as httpx
 except ImportError:
     import sys
 

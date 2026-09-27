@@ -15,7 +15,7 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-import httpx
+import httpx2 as httpx
 
 from dns_zone_manager.config import WebhookSettings, WebhookTarget
 from dns_zone_manager.logging import log_internal_event
@@ -54,7 +54,7 @@ class WebhookDispatcher:
         Args:
             settings: Webhook configuration
             store: Scheduled change store, used to auto-record manual changes
-            transport: Optional httpx transport override (used by tests)
+            transport: Optional httpx2 transport override (used by tests)
         """
         self.settings = settings
         self.store = store

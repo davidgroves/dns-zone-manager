@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from click.testing import CliRunner
 from dns_zone_manager.cli import cli
-from httpx import Response
+from httpx2 import Response
 
 
 @pytest.fixture
@@ -17,7 +17,7 @@ def runner():
 
 @pytest.fixture
 def mock_response():
-    """Factory for creating mock httpx responses."""
+    """Factory for creating mock httpx2 responses."""
 
     def _create_response(
         status_code: int = 200,

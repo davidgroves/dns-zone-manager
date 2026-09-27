@@ -11,6 +11,7 @@ import dns.update
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
 
 from dns_zone_manager.auth.combined import AuthenticatedUser, enrich_user_context, get_current_user
+from dns_zone_manager.config import get_settings
 from dns_zone_manager.dns.client import (
     RCODE_DESCRIPTIONS,
     DNSClient,
@@ -47,15 +48,38 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/nsupdate", tags=["NSUPDATE"])
 
-# Request / transaction size caps
-_MAX_BODY_BYTES = 10 * 1024 * 1024  # 10 MiB
-_MAX_LINES = 25_000
-_MAX_TRANSACTIONS = 50
 _MAX_TTL = 2147483647
 
 # These will be injected by the main app
 _dns_client: DNSClient | None = None
 _store: ScheduledChangeStore | None = None
+
+
+def _enforce_body_limits(text: str) -> None:
+    """Reject oversized nsupdate bodies using configured limits."""
+    limits = get_settings().nsupdate
+    body_bytes = len(text.encode("utf-8"))
+    if body_bytes > limits.max_body_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Request body exceeds {limits.max_body_bytes} bytes",
+        )
+    line_count = text.count("\n") + (0 if text.endswith("\n") else 1)
+    if line_count > limits.max_lines:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Request body exceeds {limits.max_lines} lines",
+        )
+
+
+def _enforce_transaction_limit(count: int) -> None:
+    """Reject requests with too many send transactions."""
+    max_transactions = get_settings().nsupdate.max_transactions
+    if count > max_transactions:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Too many transactions (max {max_transactions})",
+        )
 
 
 def _validate_rdtype(rdtype: str | None, context: str) -> str | None:
@@ -440,18 +464,7 @@ async def execute_nsupdate(
             detail="Empty request body",
         )
 
-    body_bytes = len(text.encode("utf-8"))
-    if body_bytes > _MAX_BODY_BYTES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Request body exceeds {_MAX_BODY_BYTES} bytes",
-        )
-    line_count = text.count("\n") + (0 if text.endswith("\n") else 1)
-    if line_count > _MAX_LINES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Request body exceeds {_MAX_LINES} lines",
-        )
+    _enforce_body_limits(text)
 
     # Normalize zone parameter
     default_zone = None
@@ -473,11 +486,7 @@ async def execute_nsupdate(
             detail=f"Parse error: {e}",
         )
 
-    if len(parsed_updates) > _MAX_TRANSACTIONS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Too many transactions (max {_MAX_TRANSACTIONS})",
-        )
+    _enforce_transaction_limit(len(parsed_updates))
 
     try:
         for parsed in parsed_updates:
@@ -633,6 +642,8 @@ async def create_nsupdate_drafts(
             detail="Empty request body",
         )
 
+    _enforce_body_limits(text)
+
     default_zone = None
     if zone:
         default_zone = zone if zone.endswith(".") else zone + "."
@@ -661,6 +672,8 @@ async def create_nsupdate_drafts(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         )
+
+    _enforce_transaction_limit(len(creates))
 
     created = []
     for create in creates:

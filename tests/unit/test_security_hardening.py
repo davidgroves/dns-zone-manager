@@ -7,7 +7,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import dns.name
 import pytest
-from dns_zone_manager.config import CacheSettings, LiveSettings, ServerSettings
+from dns_zone_manager.config import (
+    CacheSettings,
+    LiveSettings,
+    NSUpdateSettings,
+    ServerSettings,
+)
 from dns_zone_manager.dns.names import (
     InvalidZoneNameError,
     normalize_zone_name,
@@ -52,6 +57,13 @@ def test_server_cors_origins_default_empty() -> None:
     assert ServerSettings().cors_origins == []
     assert LiveSettings().max_connections == 500
     assert LiveSettings().send_timeout_seconds == 5.0
+
+
+def test_nsupdate_limits_defaults() -> None:
+    limits = NSUpdateSettings()
+    assert limits.max_body_bytes == 10 * 1024 * 1024
+    assert limits.max_lines == 25_000
+    assert limits.max_transactions == 10_000
 
 
 def test_cache_effective_max_zone_size() -> None:

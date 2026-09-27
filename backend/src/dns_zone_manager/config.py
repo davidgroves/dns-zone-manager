@@ -1202,6 +1202,28 @@ class LiveSettings(BaseSettings):
     )
 
 
+class NSUpdateSettings(BaseSettings):
+    """Limits for the nsupdate text API (execute and draft endpoints)."""
+
+    model_config = SettingsConfigDict(env_prefix="NSUPDATE_")
+
+    max_body_bytes: int = Field(
+        default=10 * 1024 * 1024,  # 10 MiB
+        ge=1,
+        description="Maximum nsupdate request body size in bytes",
+    )
+    max_lines: int = Field(
+        default=25_000,
+        ge=1,
+        description="Maximum number of lines in an nsupdate request body",
+    )
+    max_transactions: int = Field(
+        default=10_000,
+        ge=1,
+        description="Maximum number of send transactions per nsupdate request",
+    )
+
+
 class Settings(BaseSettings):
     """Main application settings."""
 
@@ -1221,6 +1243,9 @@ class Settings(BaseSettings):
 
     # Live WebSocket fan-out settings
     live: LiveSettings = Field(default_factory=LiveSettings)
+
+    # NSUPDATE request size limits
+    nsupdate: NSUpdateSettings = Field(default_factory=NSUpdateSettings)
 
     # TSIG keys (referenced by name from dns and notify sections)
     tsig_keys: list[TSIGKeyEntry] = Field(

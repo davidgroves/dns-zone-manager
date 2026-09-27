@@ -10,7 +10,7 @@ from fastapi import FastAPI, Request, status
 
 # Optional catalog_zone_indexer support (external package, install separately)
 try:
-    from catalog_zone_indexer import (  # type: ignore[import-not-found]
+    from catalog_zone_indexer import (
         CatZoneIndex,
         CatZoneIndexConfig,
     )
@@ -19,7 +19,7 @@ try:
 except ImportError:
     CATALOG_AVAILABLE = False
     if TYPE_CHECKING:
-        from catalog_zone_indexer import (  # type: ignore[import-not-found]
+        from catalog_zone_indexer import (
             CatZoneIndex,
             CatZoneIndexConfig,
         )
@@ -35,7 +35,11 @@ from dns_zone_manager.dns.notify import NotifyListener
 from dns_zone_manager.live.hub import ZoneChangeHub
 from dns_zone_manager.logging import configure_logging, log_internal_event
 from dns_zone_manager.metrics import ui_logo_requests_total
-from dns_zone_manager.middleware import WideEventMiddleware, enrich_error_context
+from dns_zone_manager.middleware import (
+    OriginCheckMiddleware,
+    WideEventMiddleware,
+    enrich_error_context,
+)
 from dns_zone_manager.models.requests import ErrorResponse
 from dns_zone_manager.notifications.dispatcher import WebhookDispatcher
 from dns_zone_manager.routers import (
@@ -224,8 +228,8 @@ async def _handle_zone_notify(zone_name: str) -> None:
         zone_name = zone_name + "."
     zone_name = zone_name.lower()
 
-    # Check if zone is in our cache
-    cached = zone_cache.get_zone(zone_name)
+    # Check if zone is already in cache — never auto-load via get_zone()
+    cached = zone_cache.peek_zone(zone_name)
     if cached is None:
         log_internal_event(
             "notify_zone_not_cached",
@@ -322,7 +326,44 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         theme_colour_overrides=settings.theme.override_count(),
         log_format=settings.logging.format,
         log_level=settings.logging.level,
+        cors_origins=settings.server.cors_origins,
     )
+
+    # Loud startup warnings for known trust-boundary / misconfig footguns
+    if not settings.api_key.enabled and not settings.proxy_auth.enabled:
+        log_internal_event(
+            "auth_disabled_warning",
+            logger,
+            level="WARNING",
+            message=(
+                "Both API-key and proxy auth are disabled; all callers are "
+                "treated as anonymous global admins. Only safe on a trusted network."
+            ),
+        )
+    if settings.proxy_auth.enabled:
+        log_internal_event(
+            "proxy_auth_trust_boundary_warning",
+            logger,
+            level="WARNING",
+            message=(
+                "proxy_auth is enabled: the reverse proxy must overwrite "
+                f"{settings.proxy_auth.user_header} on every request. "
+                "Do not expose the backend directly."
+            ),
+            user_header=settings.proxy_auth.user_header,
+        )
+    if settings.webhooks.enabled:
+        for target in settings.webhooks.targets:
+            if target.verify_tls is False or target.allow_insecure:
+                log_internal_event(
+                    "webhook_insecure_warning",
+                    logger,
+                    level="WARNING",
+                    target=target.name,
+                    verify_tls=target.verify_tls,
+                    allow_insecure=target.allow_insecure,
+                    message=(f"Webhook target '{target.name}' uses insecure TLS/HTTP settings"),
+                )
 
     # Create the webhook dispatcher before the DNS client so every DNS write
     # can notify it. Its store reference is attached once the scheduler store
@@ -332,7 +373,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     webhook_dispatcher = WebhookDispatcher(settings.webhooks) if settings.webhooks.enabled else None
 
     # Live zone-change hub (WebSocket fan-out); independent of webhooks.
-    zone_change_hub = ZoneChangeHub()
+    zone_change_hub = ZoneChangeHub(
+        max_connections=settings.live.max_connections,
+        max_connections_per_ip=settings.live.max_connections_per_ip,
+        send_timeout_seconds=settings.live.send_timeout_seconds,
+    )
     zone_change_hub.bind_loop(asyncio.get_running_loop())
     live.set_zone_change_hub(zone_change_hub)
 
@@ -662,13 +707,20 @@ are also accepted when proxy auth is enabled.
         lifespan=lifespan,
     )
 
-    # Add CORS middleware
+    # CORS: only when explicitly configured (empty = same-origin only)
+    if settings.server.cors_origins:
+        app.add_middleware(
+            CORSMiddleware,  # type: ignore[arg-type]
+            allow_origins=list(settings.server.cors_origins),
+            allow_credentials=True,
+            allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+            allow_headers=["Authorization", "Content-Type", "X-API-Key"],
+        )
+
+    # Reject cross-origin mutating HTTP and WebSocket upgrades
     app.add_middleware(
-        CORSMiddleware,  # type: ignore[arg-type]
-        allow_origins=["*"],  # Configure appropriately for production
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        OriginCheckMiddleware,  # type: ignore[arg-type]
+        allowed_origins=list(settings.server.cors_origins),
     )
 
     # Add wide event logging middleware
@@ -710,7 +762,7 @@ are also accepted when proxy auth is enabled.
             status_code=status.HTTP_502_BAD_GATEWAY,
             content=ErrorResponse(
                 error="DNSError",
-                message=str(exc),
+                message="DNS server error",
             ).model_dump(),
         )
 

@@ -1,5 +1,5 @@
 # Frontend Dockerfile
-# Builds the Vite SPA and serves it with nginx
+# Builds the Vite SPA and serves it with unprivileged nginx
 
 # Build stage
 FROM node:24-slim AS builder
@@ -23,15 +23,15 @@ COPY frontend/ ./frontend/
 # Strip a leading "v" so a git tag like v0.2.0 yields a valid npm version.
 RUN VER="${VERSION#v}" && npm pkg set version="$VER" && npx tsc && npx vite build
 
-# Runtime stage with nginx
-FROM nginx:alpine
+# Runtime stage with unprivileged nginx (listens on 8080, non-root)
+FROM nginxinc/nginx-unprivileged:1.29-alpine
 
 # Copy built files
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Copy nginx config
+# Copy nginx config (listens on 8080 for the unprivileged image)
 COPY examples/nginx.conf /etc/nginx/conf.d/default.conf
 
-EXPOSE 80
+EXPOSE 8080
 
 CMD ["nginx", "-g", "daemon off;"]

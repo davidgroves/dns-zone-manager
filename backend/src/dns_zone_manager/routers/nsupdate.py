@@ -4,6 +4,8 @@ import logging
 from typing import Annotated
 
 import dns.name
+import dns.rdata
+import dns.rdataclass
 import dns.rdatatype
 import dns.update
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
@@ -15,6 +17,7 @@ from dns_zone_manager.dns.client import (
     PrerequisiteFailedError,
     UpdateError,
 )
+from dns_zone_manager.dns.names import InvalidZoneNameError
 from dns_zone_manager.dns.nsupdate_parser import (
     NSUpdateParseError,
     ParsedUpdate,
@@ -26,6 +29,7 @@ from dns_zone_manager.dns.nsupdate_to_scheduled import (
     NSUpdateConversionError,
     nsupdate_text_to_creates,
 )
+from dns_zone_manager.dns.types import UPDATABLE_TYPES, is_valid_type
 from dns_zone_manager.metrics import (
     scheduled_changes_created_total,
     scheduled_changes_pending,
@@ -43,9 +47,52 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/nsupdate", tags=["NSUPDATE"])
 
+# Request / transaction size caps
+_MAX_BODY_BYTES = 10 * 1024 * 1024  # 10 MiB
+_MAX_LINES = 25_000
+_MAX_TRANSACTIONS = 50
+_MAX_TTL = 2147483647
+
 # These will be injected by the main app
 _dns_client: DNSClient | None = None
 _store: ScheduledChangeStore | None = None
+
+
+def _validate_rdtype(rdtype: str | None, context: str) -> str | None:
+    """Validate an optional record type against the updatable allowlist."""
+    if rdtype is None:
+        return None
+    rdtype = rdtype.upper()
+    if not is_valid_type(rdtype):
+        raise ValueError(f"{context}: unknown record type '{rdtype}'")
+    if rdtype not in UPDATABLE_TYPES:
+        raise ValueError(f"{context}: record type '{rdtype}' cannot be modified via API")
+    return rdtype
+
+
+def _validate_ttl(ttl: int | None, context: str) -> int | None:
+    if ttl is None:
+        return None
+    if ttl < 0 or ttl > _MAX_TTL:
+        raise ValueError(f"{context}: TTL must be between 0 and {_MAX_TTL}")
+    return ttl
+
+
+def _validate_parsed_update(parsed: ParsedUpdate) -> None:
+    """Apply type/TTL/rdata checks that structured APIs already enforce."""
+    for prereq in parsed.prerequisites:
+        if prereq.rdtype:
+            _validate_rdtype(prereq.rdtype, f"prereq {prereq.prereq_type.value}")
+    for op in parsed.operations:
+        ctx = f"{op.action.value} {op.name}"
+        if op.rdtype:
+            _validate_rdtype(op.rdtype, ctx)
+        _validate_ttl(op.ttl, ctx)
+        if op.action == UpdateAction.ADD and op.rdtype and op.data:
+            try:
+                dns.rdata.from_text(dns.rdataclass.IN, dns.rdatatype.from_text(op.rdtype), op.data)
+            except Exception as e:
+                raise ValueError(f"{ctx}: invalid rdata: {e}") from e
 
 
 def set_dns_client(client: DNSClient) -> None:
@@ -168,7 +215,10 @@ def _build_dns_update(parsed: ParsedUpdate, dns_client: DNSClient) -> dns.update
             if not op.rdtype:
                 raise ValueError(f"ADD operation requires rdtype for {op.name}")
             rdtype = dns.rdatatype.from_text(op.rdtype)
-            update.add(name, op.ttl, rdtype, op.data)
+            if not op.data:
+                raise ValueError(f"ADD operation requires rdata for {op.name}")
+            rdata = dns.rdata.from_text(dns.rdataclass.IN, rdtype, op.data)
+            update.add(name, op.ttl, rdata)
 
         elif op.action == UpdateAction.DELETE:
             if op.rdtype:
@@ -219,7 +269,7 @@ def _execute_update(parsed: ParsedUpdate, dns_client: DNSClient) -> NSUpdateTran
             zone=parsed.zone,
             operations=operations,
             success=False,
-            message=f"Prerequisite failed: {e}",
+            message="Prerequisite failed",
             rcode=e.rcode_text,
             rcode_description=rcode_desc,
         )
@@ -230,16 +280,34 @@ def _execute_update(parsed: ParsedUpdate, dns_client: DNSClient) -> NSUpdateTran
             zone=parsed.zone,
             operations=operations,
             success=False,
-            message=f"Update failed: {e}",
+            message="DNS update failed",
+            rcode=getattr(e, "rcode_text", None),
+            rcode_description=RCODE_DESCRIPTIONS.get(getattr(e, "rcode_text", None) or ""),
         )
 
-    except Exception as e:
+    except InvalidZoneNameError as e:
+        return NSUpdateTransactionResult(
+            zone=parsed.zone,
+            operations=operations,
+            success=False,
+            message=str(e),
+        )
+
+    except ValueError as e:
+        return NSUpdateTransactionResult(
+            zone=parsed.zone,
+            operations=operations,
+            success=False,
+            message=str(e),
+        )
+
+    except Exception:
         logger.exception(f"Unexpected error executing NSUPDATE for {parsed.zone}")
         return NSUpdateTransactionResult(
             zone=parsed.zone,
             operations=operations,
             success=False,
-            message=f"Unexpected error: {e}",
+            message="Unexpected error during NSUPDATE execution",
         )
 
 
@@ -372,6 +440,19 @@ async def execute_nsupdate(
             detail="Empty request body",
         )
 
+    body_bytes = len(text.encode("utf-8"))
+    if body_bytes > _MAX_BODY_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Request body exceeds {_MAX_BODY_BYTES} bytes",
+        )
+    line_count = text.count("\n") + (0 if text.endswith("\n") else 1)
+    if line_count > _MAX_LINES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Request body exceeds {_MAX_LINES} lines",
+        )
+
     # Normalize zone parameter
     default_zone = None
     if zone:
@@ -391,6 +472,21 @@ async def execute_nsupdate(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Parse error: {e}",
         )
+
+    if len(parsed_updates) > _MAX_TRANSACTIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Too many transactions (max {_MAX_TRANSACTIONS})",
+        )
+
+    try:
+        for parsed in parsed_updates:
+            _validate_parsed_update(parsed)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        ) from e
 
     if not parsed_updates:
         enrich_error_context(

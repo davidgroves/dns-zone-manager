@@ -18,7 +18,7 @@ from dns_zone_manager.notifications.context import (
 logger = logging.getLogger(__name__)
 
 
-def enrich_user_context(request: Request, user: "AuthenticatedUser") -> None:
+def enrich_user_context(request: Request, user: AuthenticatedUser) -> None:
     """Enrich the wide event with user context.
 
     Args:
@@ -46,7 +46,7 @@ class AuthenticatedUser:
     roles: list[str] | None = None
 
     @classmethod
-    def from_proxy(cls, user: "ProxyUser") -> "AuthenticatedUser":
+    def from_proxy(cls, user: ProxyUser) -> AuthenticatedUser:
         """Create from a trusted reverse-proxy (forward-auth) user."""
         return cls(
             user_id=user.user_id,
@@ -57,7 +57,7 @@ class AuthenticatedUser:
         )
 
     @classmethod
-    def from_api_key(cls, user: APIKeyUser) -> "AuthenticatedUser":
+    def from_api_key(cls, user: APIKeyUser) -> AuthenticatedUser:
         """Create from API key user."""
         return cls(
             user_id=user.key_name,

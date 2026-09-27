@@ -108,8 +108,29 @@ cache:
   # Maximum zone refresh interval in seconds (ceiling for SOA refresh)
   max_refresh_interval: 86400
 
-  # Maximum cache size in bytes (0 = unlimited, default: 1GB)
-  max_size_bytes: 1073741824
+  # Maximum cache size in bytes (0 = unlimited, default: 25 GiB)
+  max_size_bytes: 26843545600
+
+  # Maximum size of a single zone during AXFR (0 = use max_size_bytes).
+  # Oversized zones are refused rather than emptying the cache to make room.
+  max_zone_size_bytes: 26843545600
+
+# =============================================================================
+# HTTP server / browser boundary
+# =============================================================================
+# Empty cors_origins (default) disables CORS (same-origin only). When set,
+# listed origins may make credentialed cross-origin calls; mutating requests
+# and WebSocket upgrades still require Origin to match the host or this list.
+server:
+  cors_origins: []
+  # cors_origins:
+  #   - https://dns.example.com
+
+# Live WebSocket fan-out limits
+live:
+  max_connections: 500
+  max_connections_per_ip: 50
+  send_timeout_seconds: 5.0
 
 # =============================================================================
 # NOTIFY Listener Configuration
@@ -132,6 +153,9 @@ notify:
 
   # Require valid TSIG signature on incoming NOTIFY messages
   require_tsig: false
+
+  # Coalesce NOTIFY-triggered refreshes per zone (seconds between starts)
+  refresh_cooldown_seconds: 2.0
 
   # TSIG key name for NOTIFY validation (references tsig_keys entry)
   # If not set, falls back to dns.update_tsig_key when require_tsig is true

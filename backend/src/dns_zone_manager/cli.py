@@ -24,6 +24,7 @@ except ImportError:
 import json
 import os
 import sys
+from typing import Any
 from urllib.parse import quote
 
 from dns_zone_manager import __version__
@@ -79,7 +80,7 @@ def handle_response(
                 click.echo(f"  Type: {rrset['type']}")
                 click.echo(f"  TTL:  {rrset['ttl']}")
                 click.echo(f"  Data: {', '.join(rrset['records'])}")
-        except (json.JSONDecodeError, KeyError):
+        except json.JSONDecodeError, KeyError:
             pass
     else:
         try:
@@ -312,7 +313,7 @@ def replace(
 @click.pass_context
 def nsupdate(
     ctx: click.Context,
-    input_file: click.utils.LazyFile | None,
+    input_file: Any | None,
     dry_run: bool,
 ) -> None:
     """Execute nsupdate-formatted commands.
@@ -398,7 +399,7 @@ def nsupdate(
             if total_failed > 0:
                 sys.exit(1)
 
-        except (json.JSONDecodeError, KeyError):
+        except json.JSONDecodeError, KeyError:
             format_success("nsupdate commands executed")
     else:
         try:

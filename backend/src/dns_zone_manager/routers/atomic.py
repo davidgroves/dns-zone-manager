@@ -299,5 +299,5 @@ async def atomic_update(
         ddns_updates_failed.labels(reason="update_error").inc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"DNS update failed: {e}",
+            detail="DNS update failed",
         )

@@ -59,7 +59,7 @@ class ChangePrerequisite(BaseModel):
     )
 
     @model_validator(mode="after")
-    def validate_prereq_fields(self) -> "ChangePrerequisite":
+    def validate_prereq_fields(self) -> ChangePrerequisite:
         """Ensure rdtype is present for RRset prerequisites."""
         if self.prereq_type in ("nxrrset", "yxrrset") and not self.rdtype:
             raise ValueError(f"rdtype is required for {self.prereq_type} prerequisites")

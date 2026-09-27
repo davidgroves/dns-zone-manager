@@ -16,6 +16,12 @@ A FastAPI-based DNS record management API that communicates with BIND (or anothe
 - **Change Webhooks**: Notify Slack, Microsoft Teams, or any JSON endpoint when DNS changes
 - **Observability**: Prometheus `/metrics`, OTLP logs to Loki, Grafana LGTM in examples/devcontainer
 
+## Deployment assumptions
+
+This app is intended to run on a **trusted network** or behind an **authenticating reverse proxy** that overwrites identity headers on every request. Every authenticated user is a **global admin** over all zones. `/health`, `/metrics`, `/docs`, and NOTIFY listeners are expected to be network-gated. See [ARCHITECTURE.md](ARCHITECTURE.md#deployment-assumptions-and-trust-model) for the full trust model and accepted risks.
+
+Browser-facing defaults: CORS is off unless `server.cors_origins` is set; cross-origin mutating requests and WebSocket upgrades are rejected unless the Origin matches the host or that allowlist.
+
 ## Container images
 
 Published to GitHub Container Registry on each `v*` tag:

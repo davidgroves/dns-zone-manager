@@ -240,7 +240,7 @@ Visit http://localhost:8000/health to see:
     "zones_cached": 15,
     "total_records": 1250,
     "size_bytes": 524288,
-    "max_size_bytes": 1073741824
+    "max_size_bytes": 26843545600
   }
 }
 ```
@@ -248,8 +248,8 @@ Visit http://localhost:8000/health to see:
 ### Configuration
 
 ```bash
-# Maximum cache size (default 1GB, 0 = unlimited)
-CACHE_MAX_SIZE_BYTES=1073741824
+# Maximum cache size (default 25 GiB, 0 = unlimited)
+CACHE_MAX_SIZE_BYTES=26843545600
 ```
 
 ### LRU Eviction

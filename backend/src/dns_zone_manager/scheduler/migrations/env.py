@@ -34,7 +34,7 @@ def run_migrations_offline() -> None:
     """Emit SQL to stdout instead of running it against a database."""
     url = config.get_main_option("sqlalchemy.url")
     if not url:
-        url = _get_engine().url.render_as_string(hide_password=False)
+        url = _get_engine().url.render_as_string(hide_password=True)
     context.configure(
         url=url,
         target_metadata=target_metadata,

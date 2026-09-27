@@ -186,7 +186,7 @@ async def get_zone(
         )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Failed to transfer zone: {e}",
+            detail="Failed to transfer zone",
         )
 
     enrich_dns_context(
@@ -262,7 +262,7 @@ async def refresh_zone(
         )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Failed to transfer zone: {e}",
+            detail="Failed to transfer zone",
         )
 
     enrich_dns_context(
@@ -380,15 +380,16 @@ async def export_zone(
         )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Failed to transfer zone: {e}",
+            detail="Failed to transfer zone",
         )
 
     # Export zone data to master file format with $ORIGIN header
     zone_records = cached.zone_data.to_text()
     zone_content = f"$ORIGIN {zone}\n{zone_records}"
 
-    # Create filename from zone name (remove trailing dot)
-    filename = zone.rstrip(".") + ".zone"
+    from dns_zone_manager.dns.names import sanitize_zone_filename
+
+    filename = sanitize_zone_filename(zone)
 
     enrich_dns_context(
         http_request,

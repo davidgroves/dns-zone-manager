@@ -72,6 +72,10 @@
                             <label>API Key</label>
                             <input type="password" x-model="apiKeyInput" placeholder="Enter your API key" @keyup.enter="loginApiKey()">
                         </div>
+                        <label class="form-group" style="display:flex;align-items:center;gap:0.5rem;margin-top:0.75rem;cursor:pointer;">
+                            <input type="checkbox" x-model="rememberApiKey">
+                            <span>Remember this browser</span>
+                        </label>
                         <button @click="loginApiKey()" class="btn btn-success mt-2" style="width: 100%">
                             Sign in with API Key
                         </button>

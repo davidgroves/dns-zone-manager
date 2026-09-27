@@ -94,6 +94,18 @@ cache_evictions_total = Counter(
     "Total number of zones evicted from cache due to size limits",
 )
 
+cache_zone_rejected_total = Counter(
+    "dns_zone_manager_cache_zone_rejected_total",
+    "Total number of zones refused for cache insert",
+    ["reason"],  # oversize
+)
+
+zone_transfers_aborted_total = Counter(
+    "dns_zone_manager_zone_transfers_aborted_total",
+    "Total number of zone transfers aborted mid-stream",
+    ["method", "reason"],  # method: axfr; reason: size_limit
+)
+
 # Scheduled change metrics
 scheduled_changes_created_total = Counter(
     "dns_zone_manager_scheduled_changes_created_total",
@@ -227,6 +239,17 @@ zone_ws_broadcasts_total = Counter(
 zone_ws_send_errors_total = Counter(
     "dns_zone_manager_zone_ws_send_errors_total",
     "Total number of failed live zone-change WebSocket sends",
+)
+
+zone_ws_rejected_total = Counter(
+    "dns_zone_manager_zone_ws_rejected_total",
+    "Total number of WebSocket subscriptions rejected",
+    ["reason"],  # max_connections, max_per_ip
+)
+
+zone_ws_slow_client_drops_total = Counter(
+    "dns_zone_manager_zone_ws_slow_client_drops_total",
+    "Total number of WebSocket clients dropped for slow sends",
 )
 
 # UI branding metrics

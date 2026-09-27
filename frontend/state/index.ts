@@ -9,6 +9,7 @@ export function createInitialState(config: AppConfig): AppState {
     authenticated: false,
     apiKey: null,
     apiKeyInput: '',
+    rememberApiKey: false,
     loginError: '',
     apiKeyEnabled: config.apiKeyEnabled ?? true,
     proxyAuthEnabled: config.proxyAuthEnabled ?? false,

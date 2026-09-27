@@ -41,8 +41,8 @@ class NotifyListener:
 
     def __init__(
         self,
-        settings: "NotifySettings",
-        tsig_key: "TSIGKeyEntry | None" = None,
+        settings: NotifySettings,
+        tsig_key: TSIGKeyEntry | None = None,
         on_notify: NotifyCallback | None = None,
     ):
         """Initialize the NOTIFY listener.
@@ -74,6 +74,10 @@ class NotifyListener:
         self._udp_transport: asyncio.DatagramTransport | None = None
         self._tcp_server: asyncio.Server | None = None
         self._running = False
+        # Per-zone coalesce: at most one in-flight refresh; pending flag for bursts
+        self._inflight: dict[str, asyncio.Task[None]] = {}
+        self._pending: set[str] = set()
+        self._last_started: dict[str, float] = {}
 
     async def start(self) -> None:
         """Start the NOTIFY listeners on UDP and TCP."""
@@ -231,9 +235,9 @@ class NotifyListener:
                 tsig_verified=message.had_tsig,
             )
 
-            # Trigger the callback asynchronously
+            # Coalesce refreshes per zone (single in-flight + cooldown)
             if self.on_notify:
-                asyncio.create_task(self._invoke_callback(zone_name))
+                self._schedule_callback(zone_name)
 
             # Generate success response
             return self._make_notify_response(message)
@@ -257,6 +261,46 @@ class NotifyListener:
                 source=f"{addr[0]}:{addr[1]}",
             )
             return None
+
+    def _normalize_zone(self, zone_name: str) -> str:
+        zone = zone_name.strip().lower()
+        if zone and not zone.endswith("."):
+            zone = zone + "."
+        return zone
+
+    def _schedule_callback(self, zone_name: str) -> None:
+        """Schedule a coalesced refresh for ``zone_name``.
+
+        At most one refresh runs at a time per zone. Further NOTIFYs while a
+        refresh is in flight set a pending flag so one follow-up run happens
+        after it completes (subject to ``refresh_cooldown_seconds``).
+        """
+        zone = self._normalize_zone(zone_name)
+        if zone in self._inflight:
+            self._pending.add(zone)
+            return
+        self._inflight[zone] = asyncio.create_task(self._coalesced_callback(zone))
+
+    async def _coalesced_callback(self, zone_name: str) -> None:
+        """Run the notify callback, then drain any pending follow-up."""
+        try:
+            while True:
+                cooldown = float(getattr(self.settings, "refresh_cooldown_seconds", 0.0) or 0.0)
+                last = self._last_started.get(zone_name, 0.0)
+                now = asyncio.get_running_loop().time()
+                if cooldown > 0 and last > 0 and (now - last) < cooldown:
+                    await asyncio.sleep(cooldown - (now - last))
+                self._last_started[zone_name] = asyncio.get_running_loop().time()
+                await self._invoke_callback(zone_name)
+                if zone_name not in self._pending:
+                    break
+                self._pending.discard(zone_name)
+        finally:
+            self._inflight.pop(zone_name, None)
+            # A NOTIFY arrived between the last check and finally — schedule again
+            if zone_name in self._pending:
+                self._pending.discard(zone_name)
+                self._schedule_callback(zone_name)
 
     async def _invoke_callback(self, zone_name: str) -> None:
         """Invoke the notify callback with error handling.

@@ -167,9 +167,9 @@ class DNSClient:
 
     def __init__(
         self,
-        settings: "Settings",
-        dispatcher: "WebhookDispatcher | None" = None,
-        change_hub: "ZoneChangeHub | None" = None,
+        settings: Settings,
+        dispatcher: WebhookDispatcher | None = None,
+        change_hub: ZoneChangeHub | None = None,
     ):
         """Initialize DNS client with settings.
 
@@ -180,6 +180,7 @@ class DNSClient:
         """
         self.dispatcher = dispatcher
         self.change_hub = change_hub
+        self.settings = settings
         # Configuration may specify a hostname (e.g. a Docker service name);
         # dnspython requires an IP, so resolve it once at construction time.
         self.server_host = settings.dns.server
@@ -222,7 +223,7 @@ class DNSClient:
         return algorithms.get(algorithm.lower(), dns.tsig.HMAC_SHA256)
 
     def normalize_name(self, name: str, zone: str) -> dns.name.Name:
-        """Normalize a record name to be absolute (FQDN).
+        """Normalize a record name to be absolute (FQDN) and in-zone.
 
         Args:
             name: Record name (relative or absolute)
@@ -230,7 +231,12 @@ class DNSClient:
 
         Returns:
             Absolute DNS name
+
+        Raises:
+            InvalidZoneNameError: If the absolute name falls outside ``zone``
         """
+        from dns_zone_manager.dns.names import require_name_in_zone
+
         zone_name = dns.name.from_text(zone)
 
         if name == "@" or name == "":
@@ -238,10 +244,13 @@ class DNSClient:
 
         # If name ends with a dot, it's explicitly absolute
         if name.endswith("."):
-            return dns.name.from_text(name)
+            fqdn = dns.name.from_text(name)
+        else:
+            # Otherwise, treat as relative to the zone
+            fqdn = dns.name.from_text(name, origin=zone_name)
 
-        # Otherwise, treat as relative to the zone
-        return dns.name.from_text(name, origin=zone_name)
+        require_name_in_zone(fqdn, zone)
+        return fqdn
 
     def perform_axfr(self, zone: str) -> dns.zone.Zone:
         """Perform AXFR zone transfer.
@@ -253,9 +262,12 @@ class DNSClient:
             dns.zone.Zone object containing all records
 
         Raises:
-            ZoneTransferError: If transfer fails
+            ZoneTransferError: If transfer fails or exceeds size limit
         """
+        from dns_zone_manager.metrics import zone_transfers_aborted_total
+
         zone_name = dns.name.from_text(zone)
+        max_bytes = self.settings.cache.effective_max_zone_size_bytes()
 
         try:
             log_internal_event(
@@ -264,6 +276,7 @@ class DNSClient:
                 zone=zone,
                 server=self.server,
                 port=self.tcp_port,
+                max_bytes=max_bytes or None,
             )
             xfr = dns.query.xfr(
                 self.server,
@@ -275,7 +288,20 @@ class DNSClient:
                 lifetime=self.axfr_timeout,
             )
 
-            zone_obj = dns.zone.from_xfr(xfr)
+            def _bounded_xfr() -> Iterable[dns.message.Message]:
+                total = 0
+                for msg in xfr:
+                    total += len(msg.to_wire())
+                    if max_bytes > 0 and total > max_bytes:
+                        zone_transfers_aborted_total.labels(
+                            method="axfr", reason="size_limit"
+                        ).inc()
+                        raise ZoneTransferError(
+                            f"AXFR for {zone} exceeded max_zone_size_bytes ({total} > {max_bytes})"
+                        )
+                    yield msg
+
+            zone_obj = dns.zone.from_xfr(_bounded_xfr())
             log_internal_event(
                 "axfr_complete",
                 logger,
@@ -284,6 +310,8 @@ class DNSClient:
             )
             return zone_obj
 
+        except ZoneTransferError:
+            raise
         except DNSException as e:
             log_internal_event(
                 "axfr_failed",
@@ -565,7 +593,7 @@ class DNSClient:
                 records=records,
             )
 
-        except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
+        except dns.resolver.NXDOMAIN, dns.resolver.NoAnswer:
             return None
         except DNSException as e:
             log_internal_event(
@@ -929,7 +957,7 @@ class DNSClient:
             # server responded. Only timeouts/transport errors raise here.
             dns.query.udp(request, self.server, port=self.port, timeout=self.timeout)
             return True
-        except (DNSException, OSError):
+        except DNSException, OSError:
             return False
 
     def check_zone_exists(self, zone: str) -> bool:

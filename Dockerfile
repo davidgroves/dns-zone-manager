@@ -2,7 +2,7 @@
 # Multi-stage build for smaller final image
 
 # Python build stage
-FROM ghcr.io/astral-sh/uv:python3.13-trixie AS builder
+FROM ghcr.io/astral-sh/uv:python3.14-trixie AS builder
 
 # Install git (required for hatch-vcs to detect version from .git)
 RUN apt-get update && apt-get install -y --no-install-recommends git && \

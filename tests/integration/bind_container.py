@@ -53,7 +53,7 @@ def _get_host_path(container_path: str) -> str:
                 if dest and source and container_path.startswith(dest):
                     # Translate the path
                     return container_path.replace(dest, source, 1)
-    except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError):
+    except subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError:
         pass
 
     return container_path
@@ -236,7 +236,7 @@ class BindContainer(DockerContainer):
         os.chmod(config_path / "zones" / f"db.{zone_base}", 0o666)  # Zone file must be writable
         os.chmod(config_path / "zones" / "db.2.0.192.in-addr.arpa", 0o666)
 
-    def start(self) -> "BindContainer":
+    def start(self) -> BindContainer:
         """Start the BIND container.
 
         Returns:

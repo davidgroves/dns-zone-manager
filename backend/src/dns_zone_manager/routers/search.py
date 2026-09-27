@@ -49,8 +49,13 @@ def get_zone_cache() -> ZoneCache:
     return _zone_cache
 
 
+_MAX_PATTERN_LEN = 256
+# Nested quantifiers like (a+)+ or (a*)* are a common ReDoS shape.
+_NESTED_QUANTIFIER_RE = re.compile(r"\([^)]*[+*][^)]*\)[+*{]|\([^)]*[+*]\)\{")
+
+
 def compile_pattern(pattern: str | None, param_name: str) -> re.Pattern[str] | None:
-    """Compile a regex pattern with error handling.
+    """Compile a regex pattern with error handling and complexity guards.
 
     Args:
         pattern: Regex pattern string or None
@@ -60,10 +65,23 @@ def compile_pattern(pattern: str | None, param_name: str) -> re.Pattern[str] | N
         Compiled pattern or None
 
     Raises:
-        HTTPException: If pattern is invalid
+        HTTPException: If pattern is invalid or too complex
     """
     if pattern is None:
         return None
+
+    if len(pattern) > _MAX_PATTERN_LEN:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(f"Regex pattern for '{param_name}' exceeds {_MAX_PATTERN_LEN} characters"),
+        )
+    if _NESTED_QUANTIFIER_RE.search(pattern):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Regex pattern for '{param_name}' uses nested quantifiers which are not allowed"
+            ),
+        )
 
     try:
         return re.compile(pattern, re.IGNORECASE)
@@ -204,9 +222,9 @@ async def search_zone(
         Query(description="Return results after this record name (cursor-based pagination)"),
     ] = None,
     limit: Annotated[
-        int | None,
+        int,
         Query(ge=1, le=1000, description="Maximum number of results to return"),
-    ] = None,
+    ] = 100,
     offset: Annotated[
         int | None,
         Query(ge=0, description="Start at this index (0-based, for direct page jumps)"),
@@ -375,9 +393,9 @@ async def search_all_zones(
         Query(description="Cursor for pagination (format: zone_name:record_name)"),
     ] = None,
     limit: Annotated[
-        int | None,
+        int,
         Query(ge=1, le=1000, description="Maximum number of results to return"),
-    ] = None,
+    ] = 100,
     offset: Annotated[
         int | None,
         Query(ge=0, description="Start at this index (0-based, for direct page jumps)"),

@@ -11,11 +11,21 @@ from starlette.websockets import WebSocket, WebSocketState
 from dns_zone_manager.logging import log_internal_event
 from dns_zone_manager.metrics import (
     zone_ws_broadcasts_total,
+    zone_ws_rejected_total,
     zone_ws_send_errors_total,
+    zone_ws_slow_client_drops_total,
     zone_ws_subscribers,
 )
 
 logger = logging.getLogger(__name__)
+
+
+class ConnectionLimitError(Exception):
+    """Raised when a WebSocket subscription would exceed configured caps."""
+
+    def __init__(self, reason: str) -> None:
+        self.reason = reason
+        super().__init__(reason)
 
 
 def normalize_zone_name(zone: str) -> str:
@@ -29,11 +39,20 @@ def normalize_zone_name(zone: str) -> str:
 class ZoneChangeHub:
     """Fan-out applied zone changes to per-zone and all-zones WebSocket clients."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        max_connections: int = 500,
+        max_connections_per_ip: int = 50,
+        send_timeout_seconds: float = 5.0,
+    ) -> None:
         self._by_zone: dict[str, set[WebSocket]] = {}
         self._all: set[WebSocket] = set()
+        self._client_ips: dict[WebSocket, str | None] = {}
         self._lock = asyncio.Lock()
         self._loop: asyncio.AbstractEventLoop | None = None
+        self.max_connections = max_connections
+        self.max_connections_per_ip = max_connections_per_ip
+        self.send_timeout_seconds = send_timeout_seconds
 
     def bind_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         """Record the running event loop so sync DNS code can schedule broadcasts."""
@@ -43,11 +62,38 @@ class ZoneChangeHub:
         """Clear the bound loop (on shutdown)."""
         self._loop = None
 
+    def _total_subscribers(self) -> int:
+        return sum(len(s) for s in self._by_zone.values()) + len(self._all)
+
+    def _ip_count(self, client_ip: str | None) -> int:
+        if not client_ip:
+            return 0
+        return sum(1 for ip in self._client_ips.values() if ip == client_ip)
+
+    def _client_ip(self, websocket: WebSocket) -> str | None:
+        if websocket.client is None:
+            return None
+        return websocket.client.host
+
+    def _check_limits(self, websocket: WebSocket) -> str | None:
+        """Return a rejection reason, or None if the socket may subscribe."""
+        client_ip = self._client_ip(websocket)
+        if self._total_subscribers() >= self.max_connections:
+            return "max_connections"
+        if client_ip and self._ip_count(client_ip) >= self.max_connections_per_ip:
+            return "max_per_ip"
+        return None
+
     async def subscribe(self, zone: str, websocket: WebSocket) -> None:
         """Subscribe a socket to a single zone."""
         zone = normalize_zone_name(zone)
         async with self._lock:
+            reason = self._check_limits(websocket)
+            if reason:
+                zone_ws_rejected_total.labels(reason=reason).inc()
+                raise ConnectionLimitError(reason)
             self._by_zone.setdefault(zone, set()).add(websocket)
+            self._client_ips[websocket] = self._client_ip(websocket)
             self._refresh_subscriber_gauges()
         log_internal_event("zone_ws_subscribed", logger, zone=zone, scope="zone")
 
@@ -60,12 +106,18 @@ class ZoneChangeHub:
                 sockets.discard(websocket)
                 if not sockets:
                     del self._by_zone[zone]
+            self._client_ips.pop(websocket, None)
             self._refresh_subscriber_gauges()
 
     async def subscribe_all(self, websocket: WebSocket) -> None:
         """Subscribe a socket to every zone change."""
         async with self._lock:
+            reason = self._check_limits(websocket)
+            if reason:
+                zone_ws_rejected_total.labels(reason=reason).inc()
+                raise ConnectionLimitError(reason)
             self._all.add(websocket)
+            self._client_ips[websocket] = self._client_ip(websocket)
             self._refresh_subscriber_gauges()
         log_internal_event("zone_ws_subscribed", logger, zone="*", scope="all")
 
@@ -73,6 +125,7 @@ class ZoneChangeHub:
         """Remove a socket from the all-zones feed."""
         async with self._lock:
             self._all.discard(websocket)
+            self._client_ips.pop(websocket, None)
             self._refresh_subscriber_gauges()
 
     def broadcast(self, zone: str, payload: dict[str, Any]) -> None:
@@ -116,7 +169,14 @@ class ZoneChangeHub:
                 dead.append(ws)
                 continue
             try:
-                await ws.send_json(payload)
+                await asyncio.wait_for(
+                    ws.send_json(payload),
+                    timeout=self.send_timeout_seconds,
+                )
+            except TimeoutError:
+                zone_ws_slow_client_drops_total.inc()
+                zone_ws_send_errors_total.inc()
+                dead.append(ws)
             except Exception:
                 zone_ws_send_errors_total.inc()
                 dead.append(ws)
@@ -127,6 +187,7 @@ class ZoneChangeHub:
         async with self._lock:
             for ws in dead:
                 self._all.discard(ws)
+                self._client_ips.pop(ws, None)
                 for z, socks in list(self._by_zone.items()):
                     socks.discard(ws)
                     if not socks:

@@ -163,6 +163,12 @@ ENV/
 env.bak/
 venv.bak/
 
+# Local app config / scheduler DB (examples/config.yaml is tracked)
+/config.yaml
+*.db
+!examples/**/*.db
+scheduler.db
+
 # Spyder project settings
 .spyderproject
 .spyproject

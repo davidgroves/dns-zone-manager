@@ -405,9 +405,22 @@ class CacheSettings(BaseSettings):
         description="Maximum zone refresh interval in seconds (ceiling for SOA refresh)",
     )
     max_size_bytes: int = Field(
-        default=1_073_741_824,  # 1 GB
+        default=26_843_545_600,  # 25 GiB
         description="Maximum cache size in bytes (0 = unlimited)",
     )
+    max_zone_size_bytes: int = Field(
+        default=26_843_545_600,  # 25 GiB
+        description=(
+            "Maximum size of a single zone in bytes during AXFR "
+            "(0 = use max_size_bytes; refuse to cache larger zones)"
+        ),
+    )
+
+    def effective_max_zone_size_bytes(self) -> int:
+        """Per-zone size cap: explicit max_zone_size_bytes, else max_size_bytes."""
+        if self.max_zone_size_bytes > 0:
+            return self.max_zone_size_bytes
+        return self.max_size_bytes
 
 
 class CatalogZoneSettings(BaseSettings):
@@ -514,6 +527,14 @@ class NotifySettings(BaseSettings):
         default=None,
         description="Name of TSIG key for NOTIFY validation (references tsig_keys entry)",
     )
+    refresh_cooldown_seconds: float = Field(
+        default=2.0,
+        ge=0.0,
+        description=(
+            "Minimum seconds between refresh starts for the same zone after NOTIFY; "
+            "bursts coalesce into a single in-flight refresh"
+        ),
+    )
 
 
 class SchedulerSettings(BaseSettings):
@@ -616,7 +637,7 @@ class RetentionSettings(BaseSettings):
     )
 
     @model_validator(mode="after")
-    def validate_statuses(self) -> "RetentionSettings":
+    def validate_statuses(self) -> RetentionSettings:
         """Only completed statuses may be purged; reject unfinished work."""
         forbidden = sorted(_NON_PURGEABLE_STATUSES.intersection(self.statuses))
         if forbidden:
@@ -667,7 +688,7 @@ class PostgresSettings(BaseSettings):
     )
 
     @model_validator(mode="after")
-    def validate_connection_fields(self) -> "PostgresSettings":
+    def validate_connection_fields(self) -> PostgresSettings:
         """Require either a DSN or the discrete connection fields."""
         if self.dsn.get_secret_value():
             return self
@@ -750,7 +771,7 @@ class DatabaseSettings(BaseSettings):
     )
 
     @model_validator(mode="after")
-    def validate_backend(self) -> "DatabaseSettings":
+    def validate_backend(self) -> DatabaseSettings:
         """Require a postgres section when the postgres backend is selected."""
         if self.backend == "postgres" and self.postgres is None:
             raise ValueError(
@@ -853,7 +874,7 @@ class WebhookAuth(BaseModel):
         return self.header or _DEFAULT_AUTH_HEADERS.get(self.type, "X-API-Key")
 
     @model_validator(mode="after")
-    def validate_auth_fields(self) -> "WebhookAuth":
+    def validate_auth_fields(self) -> WebhookAuth:
         """Ensure the credentials required by the chosen scheme are present."""
         if self.type in ("bearer", "header", "hmac") and self.secret is None:
             raise ValueError(f"webhook auth type '{self.type}' requires 'secret'")
@@ -903,7 +924,7 @@ class WebhookTarget(BaseModel):
     )
 
     @model_validator(mode="after")
-    def validate_url_scheme(self) -> "WebhookTarget":
+    def validate_url_scheme(self) -> WebhookTarget:
         """Reject non-HTTP(S) URLs and clear-text HTTP unless explicitly allowed."""
         scheme = urlparse(self.url.get_secret_value()).scheme.lower()
         if scheme not in ("http", "https"):
@@ -975,7 +996,7 @@ class WebhookSettings(BaseSettings):
     )
 
     @model_validator(mode="after")
-    def validate_enabled(self) -> "WebhookSettings":
+    def validate_enabled(self) -> WebhookSettings:
         """Require base_url when enabled, and normalize it."""
         self.base_url = self.base_url.rstrip("/")
         if self.enabled and not self.base_url:
@@ -1060,7 +1081,7 @@ class ThemeLogoSettings(BaseModel):
     )
 
     @model_validator(mode="after")
-    def validate_source(self) -> "ThemeLogoSettings":
+    def validate_source(self) -> ThemeLogoSettings:
         """Require exactly one of url/path, and that a local file is usable."""
         if self.url and self.path:
             raise ValueError("theme.logo.url and theme.logo.path are mutually exclusive")
@@ -1145,6 +1166,42 @@ class ThemeSettings(BaseSettings):
         return self.light.overridden_count() + self.dark.overridden_count()
 
 
+class ServerSettings(BaseSettings):
+    """HTTP server / browser trust-boundary settings."""
+
+    model_config = SettingsConfigDict(env_prefix="SERVER_")
+
+    cors_origins: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Allowed CORS origins. Empty (default) disables CORS middleware "
+            "(same-origin only). Never use '*' with credentials."
+        ),
+    )
+
+
+class LiveSettings(BaseSettings):
+    """Live WebSocket fan-out settings."""
+
+    model_config = SettingsConfigDict(env_prefix="LIVE_")
+
+    max_connections: int = Field(
+        default=500,
+        ge=1,
+        description="Maximum concurrent WebSocket subscribers (global)",
+    )
+    max_connections_per_ip: int = Field(
+        default=50,
+        ge=1,
+        description="Maximum concurrent WebSocket subscribers per client IP",
+    )
+    send_timeout_seconds: float = Field(
+        default=5.0,
+        gt=0.0,
+        description="Timeout for each WebSocket send; slow clients are dropped",
+    )
+
+
 class Settings(BaseSettings):
     """Main application settings."""
 
@@ -1158,6 +1215,12 @@ class Settings(BaseSettings):
     # Application settings
     app_name: str = Field(default="DNS Zone Manager")
     debug: bool = Field(default=False)
+
+    # HTTP server / browser boundary settings
+    server: ServerSettings = Field(default_factory=ServerSettings)
+
+    # Live WebSocket fan-out settings
+    live: LiveSettings = Field(default_factory=LiveSettings)
 
     # TSIG keys (referenced by name from dns and notify sections)
     tsig_keys: list[TSIGKeyEntry] = Field(
@@ -1232,7 +1295,7 @@ class Settings(BaseSettings):
         return self.get_update_tsig_key()
 
     @model_validator(mode="after")
-    def default_sqlite_path_from_scheduler(self) -> "Settings":
+    def default_sqlite_path_from_scheduler(self) -> Settings:
         """Fall back to scheduler.database_path for the SQLite file location.
 
         Keeps configs that predate the database section working unchanged.
@@ -1242,7 +1305,7 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
-    def validate_tsig_key_references(self) -> "Settings":
+    def validate_tsig_key_references(self) -> Settings:
         """Validate that all referenced TSIG keys exist.
 
         Only validates when tsig_keys are defined. This allows backward
@@ -1279,7 +1342,7 @@ class Settings(BaseSettings):
         return self
 
     @classmethod
-    def load(cls, config_file: Path) -> "Settings":
+    def load(cls, config_file: Path) -> Settings:
         """Load settings from a YAML config file.
 
         Args:

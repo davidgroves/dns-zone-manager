@@ -15,7 +15,7 @@ All development is done inside a devcontainer for a fully containerized environm
 2. Install the "Dev Containers" extension in VS Code/Cursor
 3. Open the project and click "Reopen in Container" when prompted
 
-The devcontainer includes Python 3.13, Node 22, Playwright, and uv. BIND runs alongside in the same Docker network.
+The devcontainer includes Python 3.14, Node 22, Playwright, and uv. BIND runs alongside in the same Docker network.
 
 ### Starting Services
 

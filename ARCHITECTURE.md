@@ -561,6 +561,25 @@ flowchart TB
 
 ## Security Model
 
+### Deployment assumptions and trust model
+
+This project is designed for deployments where:
+
+1. **The backend is only reachable from a trusted network, or through an authenticating reverse proxy** that owns identity headers (for example Traefik + oauth2-proxy). The proxy must **overwrite** `X-Auth-Request-Email` (or the configured header) on every request so clients cannot spoof it. Do not expose the FastAPI process directly to the internet when `proxy_auth` is enabled.
+2. **Every authenticated principal is a global admin** over all zones, scheduled changes, history, nsupdate, and live feeds. There is no per-zone RBAC.
+
+Accepted consequences of that model (documented, not treated as bugs):
+
+- Unauthenticated `/health`, `/metrics`, `/docs`, and `/ui/config` are expected to be network-gated or proxy-gated.
+- NOTIFY (UDP/TCP) is trusted-network traffic; enable `notify.require_tsig` when peers are not fully trusted.
+- Webhook targets are admin-configured YAML and may reach private addresses.
+- Demo secrets in `examples/` must never be reused in production.
+
+Browser-facing controls that *are* enforced in the app:
+
+- CORS is off by default (`server.cors_origins` empty = same-origin only).
+- Cross-origin mutating HTTP and WebSocket upgrades are rejected unless the Origin matches the request host or an entry in `server.cors_origins`.
+
 ### Authentication Layers
 
 ```mermaid

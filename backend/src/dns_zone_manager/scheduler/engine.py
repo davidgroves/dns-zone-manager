@@ -34,6 +34,17 @@ def _prepare_sqlite(settings: DatabaseSettings) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
 
 
+def _restrict_sqlite_permissions(settings: DatabaseSettings) -> None:
+    """Ensure the SQLite DB file is owner-readable/writable only (0600)."""
+    path = sqlite_path(settings)
+    if path is None or not path.exists():
+        return
+    try:
+        path.chmod(0o600)
+    except OSError as e:
+        logger.warning("Could not chmod SQLite database %s: %s", path, e)
+
+
 def _register_sqlite_pragmas(engine: Engine) -> None:
     """Apply per-connection SQLite settings.
 
@@ -77,6 +88,16 @@ def create_store_engine(settings: DatabaseSettings) -> AsyncEngine:
     engine = create_async_engine(settings.url(async_driver=True), **_engine_kwargs(settings))
     if settings.backend == "sqlite":
         _register_sqlite_pragmas(engine.sync_engine)
+
+        @event.listens_for(engine.sync_engine, "connect")
+        def _chmod_after_connect(
+            dbapi_connection: DBAPIConnection,
+            connection_record: ConnectionPoolEntry,
+        ) -> None:
+            del dbapi_connection, connection_record
+            _restrict_sqlite_permissions(settings)
+
+        _restrict_sqlite_permissions(settings)
     return engine
 
 
@@ -86,6 +107,16 @@ def create_migration_engine(settings: DatabaseSettings) -> Engine:
     engine = create_engine(settings.url(async_driver=False), **_engine_kwargs(settings))
     if settings.backend == "sqlite":
         _register_sqlite_pragmas(engine)
+
+        @event.listens_for(engine, "connect")
+        def _chmod_after_connect(
+            dbapi_connection: DBAPIConnection,
+            connection_record: ConnectionPoolEntry,
+        ) -> None:
+            del dbapi_connection, connection_record
+            _restrict_sqlite_permissions(settings)
+
+        _restrict_sqlite_permissions(settings)
     return engine
 
 

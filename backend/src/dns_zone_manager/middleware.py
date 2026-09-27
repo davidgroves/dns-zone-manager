@@ -1,4 +1,4 @@
-"""FastAPI middleware for wide event logging.
+"""FastAPI middleware for wide event logging and Origin checks.
 
 Creates a WideEvent at request start, attaches it to request.state,
 and emits it at the end of the request with full context.
@@ -7,15 +7,85 @@ and emits it at the end of the request with full context.
 import logging
 import time
 from collections.abc import Awaitable, Callable
+from urllib.parse import urlparse
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import Response
-from starlette.types import ASGIApp
+from starlette.responses import JSONResponse, Response
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from dns_zone_manager.logging import WideEvent, emit_wide_event, should_sample
 
 logger = logging.getLogger(__name__)
+
+# Query keys whose values must never appear in wide-event logs.
+_SENSITIVE_QUERY_KEYS = frozenset({"api_key", "ticket", "token", "secret", "password"})
+
+
+def redact_query_params(params: dict[str, str] | None) -> dict[str, str] | None:
+    """Return a copy of query params with known secret keys redacted."""
+    if not params:
+        return params
+    return {
+        key: ("[REDACTED]" if key.lower() in _SENSITIVE_QUERY_KEYS else value)
+        for key, value in params.items()
+    }
+
+
+def origin_is_allowed(origin: str, host: str | None, allowed_origins: list[str]) -> bool:
+    """Whether ``origin`` matches the request host or an explicit allowlist entry."""
+    if not origin:
+        return True
+    try:
+        parsed = urlparse(origin)
+    except ValueError:
+        return False
+    if not parsed.scheme or not parsed.netloc:
+        return False
+    if host and parsed.netloc.lower() == host.lower():
+        return True
+    return origin in allowed_origins
+
+
+class OriginCheckMiddleware:
+    """Reject cross-origin state-changing HTTP and WebSocket upgrades.
+
+    Allows same-origin requests (Origin host matches Host) and origins listed
+    in ``allowed_origins``. Requests without an Origin header pass through
+    (non-browser clients / same-origin navigations).
+    """
+
+    def __init__(self, app: ASGIApp, allowed_origins: list[str] | None = None) -> None:
+        self.app = app
+        self.allowed_origins = list(allowed_origins or [])
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http":
+            method = scope.get("method", "GET").upper()
+            if method not in ("GET", "HEAD", "OPTIONS"):
+                headers = {k.decode().lower(): v.decode() for k, v in scope.get("headers", [])}
+                origin = headers.get("origin")
+                if origin and not origin_is_allowed(
+                    origin, headers.get("host"), self.allowed_origins
+                ):
+                    response = JSONResponse(
+                        status_code=403,
+                        content={
+                            "error": "ForbiddenOrigin",
+                            "message": "Origin not allowed",
+                        },
+                    )
+                    await response(scope, receive, send)
+                    return
+        elif scope["type"] == "websocket":
+            headers = {k.decode().lower(): v.decode() for k, v in scope.get("headers", [])}
+            origin = headers.get("origin")
+            if origin and not origin_is_allowed(origin, headers.get("host"), self.allowed_origins):
+                await send(
+                    {"type": "websocket.close", "code": 1008, "reason": "Origin not allowed"}
+                )
+                return
+        await self.app(scope, receive, send)
 
 
 class WideEventMiddleware(BaseHTTPMiddleware):
@@ -72,13 +142,14 @@ class WideEventMiddleware(BaseHTTPMiddleware):
         if forwarded:
             client_ip = forwarded.split(",")[0].strip()
 
-        # Set request context
+        # Set request context (redact known secret query keys)
+        raw_params = dict(request.query_params) if request.query_params else None
         wide_event.set_request(
             method=request.method,
             path=request.url.path,
             client_ip=client_ip,
             user_agent=request.headers.get("user-agent"),
-            query_params=dict(request.query_params) if request.query_params else None,
+            query_params=redact_query_params(raw_params),
         )
 
         # Attach to request state for handlers to enrich

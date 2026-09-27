@@ -55,7 +55,7 @@ class PostgresContainer(DockerContainer):
         # Data lives in the container's own filesystem, which is discarded when
         # the container stops. No host mount, so no path translation is needed.
 
-    def start(self) -> "PostgresContainer":
+    def start(self) -> PostgresContainer:
         """Start the container and wait until it accepts connections."""
         super().start()
         # The entrypoint starts the server twice: once on a unix socket for

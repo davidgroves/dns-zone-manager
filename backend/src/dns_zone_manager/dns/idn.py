@@ -151,7 +151,7 @@ def decode_escaped_utf8(value: str) -> str | None:
             return decoded
         return None
 
-    except (UnicodeDecodeError, ValueError):
+    except UnicodeDecodeError, ValueError:
         # If UTF-8 decoding fails, the escapes weren't valid UTF-8
         return None
 

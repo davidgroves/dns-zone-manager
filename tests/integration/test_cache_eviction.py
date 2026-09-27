@@ -287,9 +287,9 @@ class TestCacheEviction:
         )
 
         # Verify cache size is within limits
-        assert (
-            cache._current_size_bytes <= settings.cache.max_size_bytes
-        ), f"Cache size {cache._current_size_bytes} exceeds max {settings.cache.max_size_bytes}"
+        assert cache._current_size_bytes <= settings.cache.max_size_bytes, (
+            f"Cache size {cache._current_size_bytes} exceeds max {settings.cache.max_size_bytes}"
+        )
 
     def test_lru_eviction_order(
         self,
@@ -346,9 +346,9 @@ class TestCacheEviction:
                 evicted_zones.append(msg["zone"])
 
         # zone2 should be evicted (it's LRU since zone1 was accessed)
-        assert (
-            zone_names[1] in evicted_zones
-        ), f"Expected zone2 ({zone_names[1]}) to be evicted as LRU. Evicted zones: {evicted_zones}"
+        assert zone_names[1] in evicted_zones, (
+            f"Expected zone2 ({zone_names[1]}) to be evicted as LRU. Evicted zones: {evicted_zones}"
+        )
 
         # zone1 should NOT be evicted since we just accessed it
         assert zone_names[0] not in evicted_zones, (
@@ -492,9 +492,9 @@ debug: false
                 record for record in caplog.records if "cache_evicted" in str(record.msg)
             ]
 
-            assert (
-                len(eviction_logs) == 0
-            ), f"Expected no evictions with unlimited cache, but found {len(eviction_logs)}"
+            assert len(eviction_logs) == 0, (
+                f"Expected no evictions with unlimited cache, but found {len(eviction_logs)}"
+            )
 
             # All zones should be cached
             assert len(cache.list_zones()) == len(multi_zone_bind_server.zone_names)

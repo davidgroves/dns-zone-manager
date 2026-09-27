@@ -1,6 +1,6 @@
 """Reverse PTR management endpoints."""
 
-from enum import Enum
+from enum import StrEnum
 from typing import Annotated
 
 import dns.exception
@@ -103,7 +103,7 @@ class ReversePtrCheckResponse(BaseModel):
     any_can_create: bool = Field(..., description="Whether any PTR can be created")
 
 
-class CreateMode(str, Enum):
+class CreateMode(StrEnum):
     """Mode for handling existing PTR records."""
 
     SKIP_EXISTING = "skip_existing"

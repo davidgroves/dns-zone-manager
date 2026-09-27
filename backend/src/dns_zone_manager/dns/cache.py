@@ -756,14 +756,14 @@ class CachedZone:
                     soa_rdataset.discard(old_soa)
                     soa_rdataset.add(new_soa)
                     break  # Only one SOA record
-        except (KeyError, dns.exception.DNSException):
+        except KeyError, dns.exception.DNSException:
             pass  # SOA not found or update failed
 
 
 class ZoneCache:
     """Thread-safe cache for multiple DNS zones with LRU eviction."""
 
-    def __init__(self, settings: "Settings", dns_client: DNSClient):
+    def __init__(self, settings: Settings, dns_client: DNSClient):
         """Initialize zone cache.
 
         Args:
@@ -795,13 +795,28 @@ class ZoneCache:
 
         Returns:
             Number of zones evicted
+
+        Raises:
+            ZoneTransferError: If a single zone exceeds the cache budget
+                (eviction cannot make room without keeping the oversize zone out).
         """
         # Import here to avoid circular import at module level
-        from dns_zone_manager.metrics import cache_evictions_total
+        from dns_zone_manager.metrics import cache_evictions_total, cache_zone_rejected_total
 
         max_size = self.settings.cache.max_size_bytes
+        max_zone = self.settings.cache.effective_max_zone_size_bytes()
+        if max_zone > 0 and required_bytes > max_zone:
+            cache_zone_rejected_total.labels(reason="oversize").inc()
+            raise ZoneTransferError(
+                f"Zone exceeds max_zone_size_bytes ({required_bytes} > {max_zone})"
+            )
         if max_size == 0:  # Unlimited
             return 0
+        if required_bytes > max_size:
+            cache_zone_rejected_total.labels(reason="oversize").inc()
+            raise ZoneTransferError(
+                f"Zone exceeds cache max_size_bytes ({required_bytes} > {max_size})"
+            )
 
         evicted_count = 0
         while self._current_size_bytes + required_bytes > max_size and self._zones:
@@ -906,12 +921,17 @@ class ZoneCache:
         with self._lock:
             # Track size of old zone if replacing
             old_cached = self._zones.get(zone)
+            old_size = old_cached.estimate_size_bytes() if old_cached is not None else 0
             if old_cached is not None:
-                old_size = old_cached.estimate_size_bytes()
                 self._current_size_bytes -= old_size
-            else:
-                # New zone - check if we need to evict
+            try:
                 self._evict_if_needed(new_size)
+            except ZoneTransferError:
+                # Restore old zone accounting if we had one
+                if old_cached is not None:
+                    self._current_size_bytes += old_size
+                zone_transfers_failed.labels(method="axfr", zone=zone).inc()
+                raise
 
             self._zones[zone] = cached
             self._zones.move_to_end(zone)  # Mark as recently used
@@ -1046,6 +1066,16 @@ class ZoneCache:
             pass
         return 0
 
+    def peek_zone(self, zone: str) -> CachedZone | None:
+        """Return a cached zone without loading it from the DNS server.
+
+        Unlike :meth:`get_zone`, this never triggers AXFR. Used by the NOTIFY
+        handler so unsolicited NOTIFYs for unknown zones do not force transfers.
+        """
+        zone = self._normalize_zone_name(zone)
+        with self._lock:
+            return self._zones.get(zone)
+
     def get_zone(self, zone: str) -> CachedZone | None:
         """Get a cached zone, optionally loading it if not cached.
 
@@ -1149,7 +1179,7 @@ class ZoneCache:
                             soa_rdataset.discard(old_soa)
                             soa_rdataset.add(new_soa)
                             break  # Only one SOA record
-                except (KeyError, dns.exception.DNSException):
+                except KeyError, dns.exception.DNSException:
                     pass  # SOA not found or update failed, serial attr is still updated
         return new_serial
 
@@ -1240,7 +1270,7 @@ class ZoneCache:
         after: str | None = None,
         limit: int | None = None,
         offset: int | None = None,
-    ) -> tuple[list["CachedZone"], int, str | None, bool]:
+    ) -> tuple[list[CachedZone], int, str | None, bool]:
         """List cached zones with optional pagination.
 
         Args:

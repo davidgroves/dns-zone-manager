@@ -51,10 +51,13 @@ async def test_handle_notify_success_invokes_callback():
     resp_msg = dns.message.from_wire(response)
     assert resp_msg.rcode() == dns.rcode.NOERROR
 
-    # Callback is scheduled via create_task; yield to the loop
+    # Callback is scheduled via coalesced create_task; yield to the loop
     import asyncio
 
-    await asyncio.sleep(0)
+    for _ in range(20):
+        if any(z.startswith("test.example") for z in received):
+            break
+        await asyncio.sleep(0.01)
     assert any(z.startswith("test.example") for z in received)
 
 

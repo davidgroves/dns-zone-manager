@@ -1,7 +1,7 @@
 import { formatDNSError } from './api/client';
 import { createAtomicMethods } from './modules/atomic';
 import { createAuditMethods } from './modules/audit';
-import { createAuthMethods } from './modules/auth';
+import { createAuthMethods, readStoredApiKey } from './modules/auth';
 import { createHistoryMethods } from './modules/history';
 import { createLiveMethods } from './modules/live';
 import { createNsupdateMethods } from './modules/nsupdate';
@@ -433,10 +433,11 @@ export function createApp(config: AppConfig) {
         return;
       }
 
-      // Check for stored API key
-      const storedKey = localStorage.getItem('dns_zone_manager_api_key');
+      // Check for stored API key (sessionStorage first, then localStorage)
+      const storedKey = readStoredApiKey();
       if (storedKey) {
         self.apiKey = storedKey;
+        self.rememberApiKey = localStorage.getItem('dns_zone_manager_api_key') === storedKey;
         // validateAndSetAuth will call navigateToRoute if successful
         await self.validateAndSetAuth();
       }

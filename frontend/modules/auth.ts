@@ -2,6 +2,8 @@ import { API_BASE, api } from '../api/client';
 import type { AppState, RouteParams } from '../types';
 import { syncUrlFromState } from './router';
 
+const API_KEY_STORAGE_KEY = 'dns_zone_manager_api_key';
+
 // Method context type - the full app state with methods (uses any to avoid circular refs)
 type MethodContext = AppState & {
   loadZones: () => Promise<void>;
@@ -12,6 +14,27 @@ type MethodContext = AppState & {
   updateUrlFromState: () => void;
   disconnectZoneLive: () => void;
 };
+
+function clearStoredApiKey(): void {
+  sessionStorage.removeItem(API_KEY_STORAGE_KEY);
+  localStorage.removeItem(API_KEY_STORAGE_KEY);
+}
+
+function storeApiKey(apiKey: string, remember: boolean): void {
+  clearStoredApiKey();
+  const storage = remember ? localStorage : sessionStorage;
+  storage.setItem(API_KEY_STORAGE_KEY, apiKey);
+}
+
+/**
+ * Read a previously stored API key (sessionStorage preferred, then localStorage).
+ */
+export function readStoredApiKey(): string | null {
+  return (
+    sessionStorage.getItem(API_KEY_STORAGE_KEY) ||
+    localStorage.getItem(API_KEY_STORAGE_KEY)
+  );
+}
 
 /**
  * Authentication module.
@@ -41,7 +64,7 @@ export function createAuthMethods(_state: AppState) {
 
         if (response.ok) {
           if (this.apiKey) {
-            localStorage.setItem('dns_zone_manager_api_key', this.apiKey);
+            storeApiKey(this.apiKey, this.rememberApiKey);
           }
           this.authenticated = true;
           this.loginError = '';
@@ -57,19 +80,21 @@ export function createAuthMethods(_state: AppState) {
         } else if (response.status === 401) {
           this.loginError = 'Invalid API key';
           this.apiKey = null;
-          localStorage.removeItem('dns_zone_manager_api_key');
+          clearStoredApiKey();
         } else if (response.status === 403) {
           this.loginError = 'Access denied';
           this.apiKey = null;
-          localStorage.removeItem('dns_zone_manager_api_key');
+          clearStoredApiKey();
         } else {
           const errorText = await response.text();
           this.loginError = `Authentication failed: ${errorText || response.statusText}`;
           this.apiKey = null;
+          clearStoredApiKey();
         }
       } catch (e) {
         this.loginError = `Connection error: ${(e as Error).message}`;
         this.apiKey = null;
+        clearStoredApiKey();
       }
     },
 
@@ -106,7 +131,8 @@ export function createAuthMethods(_state: AppState) {
       this.trackLogout();
       this.authenticated = false;
       this.apiKey = null;
-      localStorage.removeItem('dns_zone_manager_api_key');
+      this.apiKeyInput = '';
+      clearStoredApiKey();
       this.zones = [];
       this.selectedZone = null;
       this.records = [];

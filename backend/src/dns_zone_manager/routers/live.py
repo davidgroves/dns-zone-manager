@@ -7,7 +7,7 @@ import logging
 from fastapi import APIRouter, Path, WebSocket, WebSocketDisconnect
 
 from dns_zone_manager.live.auth import authenticate_websocket
-from dns_zone_manager.live.hub import ZoneChangeHub, normalize_zone_name
+from dns_zone_manager.live.hub import ConnectionLimitError, ZoneChangeHub, normalize_zone_name
 from dns_zone_manager.logging import log_internal_event
 
 logger = logging.getLogger(__name__)
@@ -30,13 +30,27 @@ def get_zone_change_hub() -> ZoneChangeHub:
     return _hub
 
 
+async def _reject_limit(websocket: WebSocket, reason: str) -> None:
+    await websocket.close(code=1013, reason=f"Connection limit: {reason}")
+    log_internal_event(
+        "zone_ws_rejected",
+        logger,
+        level="WARNING",
+        reason=reason,
+    )
+
+
 @router.websocket("/ws")
 async def subscribe_all_zones(websocket: WebSocket) -> None:
     """Subscribe to applied changes for every zone."""
     await authenticate_websocket(websocket)
     await websocket.accept()
     hub = get_zone_change_hub()
-    await hub.subscribe_all(websocket)
+    try:
+        await hub.subscribe_all(websocket)
+    except ConnectionLimitError as e:
+        await _reject_limit(websocket, e.reason)
+        return
     await websocket.send_json({"type": "subscribed", "zone": "*"})
     try:
         while True:
@@ -60,7 +74,11 @@ async def subscribe_zone(
     zone = normalize_zone_name(zone)
     await websocket.accept()
     hub = get_zone_change_hub()
-    await hub.subscribe(zone, websocket)
+    try:
+        await hub.subscribe(zone, websocket)
+    except ConnectionLimitError as e:
+        await _reject_limit(websocket, e.reason)
+        return
     await websocket.send_json({"type": "subscribed", "zone": zone})
     try:
         while True:

@@ -22,7 +22,7 @@ Ignored commands (API uses its own configuration):
 import logging
 import shlex
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ class NSUpdateParseError(Exception):
         super().__init__(message)
 
 
-class PrereqType(str, Enum):
+class PrereqType(StrEnum):
     """Types of prerequisite checks."""
 
     NXDOMAIN = "nxdomain"  # Name must not exist
@@ -46,7 +46,7 @@ class PrereqType(str, Enum):
     YXRRSET = "yxrrset"  # RRset must exist (optionally with specific data)
 
 
-class UpdateAction(str, Enum):
+class UpdateAction(StrEnum):
     """Types of update actions."""
 
     ADD = "add"

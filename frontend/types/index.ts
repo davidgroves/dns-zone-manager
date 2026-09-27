@@ -360,6 +360,7 @@ export interface AppState {
   authenticated: boolean;
   apiKey: string | null;
   apiKeyInput: string;
+  rememberApiKey: boolean;
   loginError: string;
   apiKeyEnabled: boolean;
   proxyAuthEnabled: boolean;

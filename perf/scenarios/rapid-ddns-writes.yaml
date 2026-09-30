@@ -1,0 +1,18 @@
+name: rapid-ddns-writes
+description: Ramp direct DDNS (nsupdate/dnspython) writes; measure IXFR propagation lag.
+zone: perf5m.test
+provision: false
+require_zone: true
+measure_serial_lag: true
+load:
+  mode: ddns
+  concurrency: 32
+  pool_size: 2000
+  readers: false
+  steps:
+    - { rps: 50, duration: 60, label: "ddns@50" }
+    - { rps: 100, duration: 60, label: "ddns@100" }
+    - { rps: 250, duration: 60, label: "ddns@250" }
+    - { rps: 500, duration: 60, label: "ddns@500" }
+notes:
+  - Exercises BIND NOTIFY → app IXFR path rather than API write path.

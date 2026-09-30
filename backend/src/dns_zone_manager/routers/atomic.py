@@ -230,7 +230,7 @@ async def atomic_update(
         )
     except UpdateBuildError as e:
         status_code = status.HTTP_400_BAD_REQUEST
-        if e.code == "RRSET_EXISTS":
+        if e.code in ("RRSET_EXISTS", "CNAME_CONFLICT"):
             status_code = status.HTTP_409_CONFLICT
         elif e.code == "RRSET_NOT_FOUND":
             status_code = status.HTTP_404_NOT_FOUND
@@ -244,7 +244,7 @@ async def atomic_update(
 
     # Send the combined update
     try:
-        dns_client._send_update(built.update, zone)
+        await dns_client.send_update_async(built.update, zone)
 
         apply_cache_updates(zone, built.cache_updates, zone_cache)
         for cu in built.cache_updates:

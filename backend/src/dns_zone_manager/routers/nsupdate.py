@@ -12,11 +12,16 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, sta
 
 from dns_zone_manager.auth.combined import AuthenticatedUser, enrich_user_context, get_current_user
 from dns_zone_manager.config import get_settings
+from dns_zone_manager.dns.cache import ZoneCache
 from dns_zone_manager.dns.client import (
     RCODE_DESCRIPTIONS,
     DNSClient,
     PrerequisiteFailedError,
     UpdateError,
+)
+from dns_zone_manager.dns.cname_exclusivity import (
+    OwnerTypeOp,
+    simulate_cname_exclusivity,
 )
 from dns_zone_manager.dns.names import InvalidZoneNameError
 from dns_zone_manager.dns.nsupdate_parser import (
@@ -52,6 +57,7 @@ _MAX_TTL = 2147483647
 
 # These will be injected by the main app
 _dns_client: DNSClient | None = None
+_zone_cache: ZoneCache | None = None
 _store: ScheduledChangeStore | None = None
 
 
@@ -125,6 +131,12 @@ def set_dns_client(client: DNSClient) -> None:
     _dns_client = client
 
 
+def set_zone_cache(cache: ZoneCache) -> None:
+    """Set the zone cache instance."""
+    global _zone_cache
+    _zone_cache = cache
+
+
 def set_store(store: ScheduledChangeStore) -> None:
     """Set the scheduled change store instance."""
     global _store
@@ -139,6 +151,11 @@ def get_dns_client() -> DNSClient:
             detail="DNS client not initialized",
         )
     return _dns_client
+
+
+def get_zone_cache() -> ZoneCache | None:
+    """Get the zone cache if initialized (optional for CNAME checks)."""
+    return _zone_cache
 
 
 def get_store() -> ScheduledChangeStore:
@@ -260,12 +277,56 @@ def _build_dns_update(parsed: ParsedUpdate, dns_client: DNSClient) -> dns.update
     return update
 
 
-def _execute_update(parsed: ParsedUpdate, dns_client: DNSClient) -> NSUpdateTransactionResult:
+def _cname_conflict_for_parsed(
+    parsed: ParsedUpdate,
+    dns_client: DNSClient,
+    zone_cache: ZoneCache | None,
+) -> str | None:
+    """Return a CNAME conflict message if the transaction would be silently ignored."""
+    if zone_cache is None or not parsed.operations:
+        return None
+
+    sim_ops: list[OwnerTypeOp] = []
+    for i, op in enumerate(parsed.operations):
+        fqdn_str = str(dns_client.normalize_name(op.name, parsed.zone))
+        if op.action == UpdateAction.ADD:
+            if not op.rdtype:
+                continue
+            sim_ops.append(OwnerTypeOp(action="add", name=fqdn_str, rdtype=op.rdtype, index=i))
+        elif op.action == UpdateAction.DELETE:
+            sim_ops.append(OwnerTypeOp(action="delete", name=fqdn_str, rdtype=op.rdtype, index=i))
+
+    if not sim_ops:
+        return None
+
+    initial_types: dict[str, set[str]] = {}
+    cached_zone = zone_cache.get_zone(parsed.zone)
+    if cached_zone is not None:
+        for sim_op in sim_ops:
+            if sim_op.name in initial_types:
+                continue
+            # Prefer the original op name for cache lookup
+            source = (
+                parsed.operations[sim_op.index].name if sim_op.index is not None else sim_op.name
+            )
+            rrsets = cached_zone.get_rrsets_by_name(source)
+            initial_types[sim_op.name] = {rr.rdtype.upper() for rr in rrsets}
+
+    conflict = simulate_cname_exclusivity(initial_types, sim_ops)
+    return conflict.message if conflict is not None else None
+
+
+async def _execute_update(
+    parsed: ParsedUpdate,
+    dns_client: DNSClient,
+    zone_cache: ZoneCache | None = None,
+) -> NSUpdateTransactionResult:
     """Execute a single parsed update transaction.
 
     Args:
         parsed: The parsed update to execute
         dns_client: DNS client for sending the update
+        zone_cache: Optional cache for CNAME exclusivity simulation
 
     Returns:
         NSUpdateTransactionResult with success/failure info
@@ -273,11 +334,20 @@ def _execute_update(parsed: ParsedUpdate, dns_client: DNSClient) -> NSUpdateTran
     operations = _parsed_update_to_operations(parsed)
 
     try:
+        conflict_msg = _cname_conflict_for_parsed(parsed, dns_client, zone_cache)
+        if conflict_msg is not None:
+            return NSUpdateTransactionResult(
+                zone=parsed.zone,
+                operations=operations,
+                success=False,
+                message=conflict_msg,
+            )
+
         # Build the update message
         update = _build_dns_update(parsed, dns_client)
 
-        # Send it using the DNS client's internal method
-        dns_client._send_update(update, parsed.zone)
+        # Send it using the DNS client's internal method (off event loop)
+        await dns_client.send_update_async(update, parsed.zone)
 
         return NSUpdateTransactionResult(
             zone=parsed.zone,
@@ -544,7 +614,7 @@ async def execute_nsupdate(
     # Execute each transaction
     results: list[NSUpdateTransactionResult] = []
     for parsed in parsed_updates:
-        result = _execute_update(parsed, dns_client)
+        result = await _execute_update(parsed, dns_client, get_zone_cache())
         results.append(result)
 
     # Count successes and failures

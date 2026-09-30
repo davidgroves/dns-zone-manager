@@ -18,6 +18,11 @@ import dns.update
 
 from dns_zone_manager.dns.cache import ZoneCache
 from dns_zone_manager.dns.client import DNSClient
+from dns_zone_manager.dns.cname_exclusivity import (
+    OwnerTypeOp,
+    ops_delete_cname_or_all,
+    simulate_cname_exclusivity,
+)
 from dns_zone_manager.dns.types import normalize_class
 from dns_zone_manager.models.requests import AtomicOperation
 from dns_zone_manager.models.scheduled import (
@@ -246,6 +251,39 @@ def build_update(
     # Explicit prerequisites first
     apply_explicit_prerequisites(update, zone, prerequisites, dns_client)
 
+    # Simulate CNAME exclusivity across the full op list (prereqs cannot see
+    # post-delete state in the same UPDATE).
+    sim_ops: list[OwnerTypeOp] = []
+    for i, op in enumerate(operations):
+        fqdn_str = str(dns_client.normalize_name(op.name, zone))
+        sim_ops.append(
+            OwnerTypeOp(
+                action=op.action,  # type: ignore[arg-type]
+                name=fqdn_str,
+                rdtype=op.type.upper(),
+                index=i,
+            )
+        )
+
+    initial_types: dict[str, set[str]] = {}
+    cached_zone = zone_cache.get_zone(zone)
+    if cached_zone is not None:
+        for sim_op in sim_ops:
+            if sim_op.name in initial_types:
+                continue
+            # Use relative/absolute as stored on the op; cache accepts either.
+            source_name = operations[sim_op.index].name if sim_op.index is not None else sim_op.name
+            rrsets = cached_zone.get_rrsets_by_name(source_name)
+            initial_types[sim_op.name] = {rr.rdtype.upper() for rr in rrsets}
+
+    conflict = simulate_cname_exclusivity(initial_types, sim_ops)
+    if conflict is not None:
+        raise UpdateBuildError(
+            conflict.message,
+            index=conflict.index,
+            code="CNAME_CONFLICT",
+        )
+
     cache_updates: list[CacheUpdate] = []
     auto_preview: list[PrerequisitePreviewResult] = []
 
@@ -255,6 +293,7 @@ def build_update(
         rdtype_obj = dns.rdatatype.from_text(rdtype)
         rdclass_obj = dns.rdataclass.from_text(rdclass)
         fqdn = dns_client.normalize_name(op.name, zone)
+        fqdn_str = str(fqdn)
 
         if op.action == "add":
             if not op.records:
@@ -273,6 +312,9 @@ def build_update(
                 )
 
             if auto_prerequisites:
+                # Never NXDOMAIN for multi-op: deletes in this UPDATE are not
+                # visible to prereqs. Typed NXRRSET only; optional CNAME-absent
+                # when this txn does not also delete that CNAME.
                 update.absent(fqdn, rdtype_obj)
                 auto_preview.append(
                     PrerequisitePreviewResult(
@@ -285,6 +327,20 @@ def build_update(
                         source="auto",
                     )
                 )
+                if rdtype != "CNAME" and not ops_delete_cname_or_all(sim_ops, fqdn_str):
+                    update.absent(fqdn, dns.rdatatype.CNAME)
+                    cname_rrset = zone_cache.get_rrset(zone, op.name, "CNAME", rdclass)
+                    auto_preview.append(
+                        PrerequisitePreviewResult(
+                            prereq_type="nxrrset",
+                            name=op.name,
+                            rdtype="CNAME",
+                            rdclass=rdclass,
+                            passed=cname_rrset is None,
+                            message="auto nxrrset CNAME for non-CNAME add",
+                            source="auto",
+                        )
+                    )
 
             for record in op.records:
                 rdata = dns.rdata.from_text(rdclass_obj, rdtype_obj, record)

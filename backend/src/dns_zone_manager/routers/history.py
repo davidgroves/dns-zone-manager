@@ -637,7 +637,7 @@ async def rollback_zone(
 
     # Send the update
     try:
-        dns_client._send_update(update, zone)
+        await dns_client.send_update_async(update, zone)
     except PrerequisiteFailedError as e:
         enrich_error_context(
             http_request,

@@ -100,9 +100,15 @@ class BindContainer(DockerContainer):
         # temp files must be in a path accessible to the Docker daemon.
         # /workspace is mounted from the host, so use it as the temp base.
         workspace_tmp = Path("/workspace/.tmp")
+        use_workspace = False
         if Path("/workspace").exists():
-            # Create .tmp directory if it doesn't exist (e.g., after fresh clone)
-            workspace_tmp.mkdir(exist_ok=True)
+            try:
+                # Create .tmp directory if it doesn't exist (e.g., after fresh clone)
+                workspace_tmp.mkdir(exist_ok=True)
+                use_workspace = os.access(workspace_tmp, os.W_OK)
+            except OSError:
+                use_workspace = False
+        if use_workspace:
             self._config_dir = tempfile.mkdtemp(prefix="bind_test_", dir=workspace_tmp)
         else:
             # Fall back to system temp for non-devcontainer environments

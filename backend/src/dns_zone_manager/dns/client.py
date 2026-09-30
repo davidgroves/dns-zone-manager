@@ -1,11 +1,15 @@
 """DNS client for AXFR/IXFR zone transfers and DDNS updates."""
 
+import asyncio
+import contextvars
 import logging
 import socket
 import uuid
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Literal
+from functools import partial
+from typing import TYPE_CHECKING, Literal, TypeVar
 
 import dns.inet
 import dns.message
@@ -42,6 +46,12 @@ if TYPE_CHECKING:
     from dns_zone_manager.notifications.dispatcher import WebhookDispatcher
 
 logger = logging.getLogger(__name__)
+
+# Concurrent DDNS/AXFR calls off the asyncio event loop. Sized for write ramps
+# well above the old ~200/s single-loop ceiling.
+DEFAULT_DNS_IO_WORKERS = 64
+
+T = TypeVar("T")
 
 
 def resolve_server_address(server: str) -> str:
@@ -112,9 +122,9 @@ class UpdateError(DNSClientError):
 
 # User-friendly descriptions for DNS UPDATE rcodes
 RCODE_DESCRIPTIONS: dict[str, str] = {
-    "YXRRSET": "Record already exists when it shouldn't",
+    "YXRRSET": "Record already exists when it shouldn't (or a CNAME blocks this type)",
     "NXRRSET": "Record doesn't exist when it should",
-    "YXDOMAIN": "Name already exists when it shouldn't",
+    "YXDOMAIN": "Name already exists when it shouldn't (CNAME requires an unused name)",
     "NXDOMAIN": "Name doesn't exist when it should",
 }
 
@@ -170,6 +180,8 @@ class DNSClient:
         settings: Settings,
         dispatcher: WebhookDispatcher | None = None,
         change_hub: ZoneChangeHub | None = None,
+        *,
+        io_workers: int = DEFAULT_DNS_IO_WORKERS,
     ):
         """Initialize DNS client with settings.
 
@@ -177,6 +189,7 @@ class DNSClient:
             settings: Application settings containing DNS server and TSIG config
             dispatcher: Optional webhook dispatcher notified of every change
             change_hub: Optional live WebSocket hub for applied changes
+            io_workers: Thread-pool size for blocking dnspython I/O
         """
         self.dispatcher = dispatcher
         self.change_hub = change_hub
@@ -196,6 +209,10 @@ class DNSClient:
         self.tcp_port = settings.dns.effective_tcp_port  # TCP port for AXFR/DDNS
         self.timeout = settings.dns.timeout
         self.axfr_timeout = settings.dns.axfr_timeout
+        self._io_executor = ThreadPoolExecutor(
+            max_workers=max(1, io_workers),
+            thread_name_prefix="dns-io",
+        )
 
         # Set up TSIG keyring for authenticated operations
         tsig_key = settings.get_update_tsig_key()
@@ -210,6 +227,78 @@ class DNSClient:
         )
         self.keyname = dns.name.from_text(tsig_key.name)
         self.keyalgorithm = self._get_tsig_algorithm(tsig_key.algorithm)
+
+    def close(self) -> None:
+        """Shut down the DNS I/O thread pool."""
+        self._io_executor.shutdown(wait=False, cancel_futures=True)
+
+    async def run_io(self, func: Callable[..., T], /, *args: object, **kwargs: object) -> T:
+        """Run blocking DNS I/O in the client thread pool.
+
+        Copies the current ``contextvars`` context so notification
+        ``change_context`` set on the event-loop task is visible in the worker.
+        """
+        loop = asyncio.get_running_loop()
+        ctx = contextvars.copy_context()
+        bound = partial(func, *args, **kwargs)
+        return await loop.run_in_executor(self._io_executor, ctx.run, bound)
+
+    async def add_rrset_async(self, *args: object, **kwargs: object) -> None:
+        """Build on the event loop; TCP exchange in the I/O pool."""
+        update, zone = self._prepare_add_rrset(*args, **kwargs)  # type: ignore[arg-type]
+        await self.send_update_async(update, zone)
+
+    async def delete_rrset_async(self, *args: object, **kwargs: object) -> None:
+        """Build on the event loop; TCP exchange in the I/O pool."""
+        update, zone = self._prepare_delete_rrset(*args, **kwargs)  # type: ignore[arg-type]
+        await self.send_update_async(update, zone)
+
+    async def replace_rrset_async(self, *args: object, **kwargs: object) -> None:
+        """Build on the event loop; TCP exchange in the I/O pool."""
+        update, zone = self._prepare_replace_rrset(*args, **kwargs)  # type: ignore[arg-type]
+        await self.send_update_async(update, zone)
+
+    async def send_update_async(self, update: dns.update.Update, zone: str) -> None:
+        """Run ``dns.query.tcp`` in a worker thread; handle result on the loop.
+
+        Notification/webhook emission stays on the event-loop thread so
+        ``asyncio.Queue`` and the change hub are not touched from workers.
+        """
+        try:
+            response = await self.run_io(self._exchange_update, update)
+            self._handle_update_response(update, zone, response)
+        except DNSException as e:
+            if isinstance(e, PrerequisiteFailedError | UpdateError):
+                raise
+            log_internal_event(
+                "ddns_update_error",
+                logger,
+                level="ERROR",
+                zone=zone,
+                error=str(e),
+            )
+            self._emit_change_event(
+                update,
+                zone,
+                event=EVENT_CHANGE_FAILED,
+                error=f"Update failed: {e}",
+            )
+            raise UpdateError(f"Update failed: {e}") from e
+        except OSError as e:
+            log_internal_event(
+                "ddns_update_error",
+                logger,
+                level="ERROR",
+                zone=zone,
+                error=str(e),
+            )
+            self._emit_change_event(
+                update,
+                zone,
+                event=EVENT_CHANGE_FAILED,
+                error=f"Update failed: {e}",
+            )
+            raise UpdateError(f"Update failed: {e}") from e
 
     def _get_tsig_algorithm(self, algorithm: str) -> dns.name.Name:
         """Convert algorithm string to dnspython constant."""
@@ -625,12 +714,30 @@ class DNSClient:
             rdtype: Record type
             records: List of record data strings
             rdclass: Record class (default: IN)
-            prereq_not_exists: If True, require that the RRset doesn't already exist
+            prereq_not_exists: If True, require that the RRset doesn't already
+                exist. For CNAME, the whole name must be unused (NXDOMAIN). For
+                other types, also require that no CNAME exists at the name.
 
         Raises:
             PrerequisiteFailedError: If prerequisites fail
             UpdateError: If update fails
         """
+        update, zone = self._prepare_add_rrset(
+            zone, name, ttl, rdtype, records, rdclass, prereq_not_exists
+        )
+        self._send_update(update, zone)
+
+    def _prepare_add_rrset(
+        self,
+        zone: str,
+        name: str,
+        ttl: int,
+        rdtype: str,
+        records: list[str],
+        rdclass: str = "IN",
+        prereq_not_exists: bool = True,
+    ) -> tuple[dns.update.Update, str]:
+        """Build an ADD update message (no network I/O)."""
         zone_name = dns.name.from_text(zone)
         fqdn = self.normalize_name(name, zone)
         rdtype_obj = dns.rdatatype.from_text(rdtype)
@@ -643,16 +750,21 @@ class DNSClient:
             keyalgorithm=self.keyalgorithm,
         )
 
-        # Add prerequisite: RRset should not exist
+        # Prerequisites: BIND ignores conflicting CNAME/non-CNAME adds with
+        # NOERROR, so enforce exclusivity via live prereqs (not cache alone).
         if prereq_not_exists:
-            update.absent(fqdn, rdtype_obj)
+            if rdtype_obj == dns.rdatatype.CNAME:
+                # Name must be unused (NXDOMAIN) — typed NXRRSET is not enough.
+                update.absent(fqdn)
+            else:
+                update.absent(fqdn, rdtype_obj)
+                update.absent(fqdn, dns.rdatatype.CNAME)
 
-        # Add the records with specified class
         for record in records:
             rdata = dns.rdata.from_text(rdclass_obj, rdtype_obj, record)
             update.add(fqdn, ttl, rdata)
 
-        self._send_update(update, zone)
+        return update, zone
 
     def delete_rrset(
         self,
@@ -677,6 +789,21 @@ class DNSClient:
             PrerequisiteFailedError: If prerequisites fail
             UpdateError: If update fails
         """
+        update, zone = self._prepare_delete_rrset(
+            zone, name, rdtype, records, rdclass, prereq_records
+        )
+        self._send_update(update, zone)
+
+    def _prepare_delete_rrset(
+        self,
+        zone: str,
+        name: str,
+        rdtype: str,
+        records: list[str] | None = None,
+        rdclass: str = "IN",
+        prereq_records: list[str] | None = None,
+    ) -> tuple[dns.update.Update, str]:
+        """Build a DELETE update message (no network I/O)."""
         zone_name = dns.name.from_text(zone)
         fqdn = self.normalize_name(name, zone)
         rdtype_obj = dns.rdatatype.from_text(rdtype)
@@ -689,24 +816,20 @@ class DNSClient:
             keyalgorithm=self.keyalgorithm,
         )
 
-        # Add prerequisite: RRset must exist (optionally with specific values)
         if prereq_records:
             for record in prereq_records:
                 update.present(fqdn, rdtype_obj, record)
         else:
-            # Just require the RRset exists
             update.present(fqdn, rdtype_obj)
 
-        # Delete specific records or entire RRset
         if records:
             for record in records:
                 rdata = dns.rdata.from_text(rdclass_obj, rdtype_obj, record)
                 update.delete(fqdn, rdata)
         else:
-            # Delete entire RRset of this type
             update.delete(fqdn, rdtype_obj)
 
-        self._send_update(update, zone)
+        return update, zone
 
     def replace_rrset(
         self,
@@ -733,6 +856,22 @@ class DNSClient:
             PrerequisiteFailedError: If prerequisites fail
             UpdateError: If update fails
         """
+        update, zone = self._prepare_replace_rrset(
+            zone, name, ttl, rdtype, new_records, rdclass, prereq_records
+        )
+        self._send_update(update, zone)
+
+    def _prepare_replace_rrset(
+        self,
+        zone: str,
+        name: str,
+        ttl: int,
+        rdtype: str,
+        new_records: list[str],
+        rdclass: str = "IN",
+        prereq_records: list[str] | None = None,
+    ) -> tuple[dns.update.Update, str]:
+        """Build a REPLACE update message (no network I/O)."""
         zone_name = dns.name.from_text(zone)
         fqdn = self.normalize_name(name, zone)
         rdtype_obj = dns.rdatatype.from_text(rdtype)
@@ -745,21 +884,18 @@ class DNSClient:
             keyalgorithm=self.keyalgorithm,
         )
 
-        # Add prerequisite: verify current state matches expected
         if prereq_records:
             for record in prereq_records:
                 update.present(fqdn, rdtype_obj, record)
         else:
-            # At minimum, require the RRset exists
             update.present(fqdn, rdtype_obj)
 
-        # Delete existing and add new with specified class
         update.delete(fqdn, rdtype_obj)
         for record in new_records:
             rdata = dns.rdata.from_text(rdclass_obj, rdtype_obj, record)
             update.add(fqdn, ttl, rdata)
 
-        self._send_update(update, zone)
+        return update, zone
 
     def _emit_change_event(
         self,
@@ -825,8 +961,85 @@ class DNSClient:
             except Exception as e:
                 logger.warning("Failed to broadcast live zone change for %s: %s", zone, e)
 
+    def _exchange_update(self, update: dns.update.Update) -> dns.message.Message:
+        """Blocking TCP DDNS exchange (safe to run in a worker thread)."""
+        return dns.query.tcp(
+            update,
+            self.server,
+            port=self.tcp_port,
+            timeout=self.timeout,
+        )
+
+    def _handle_update_response(
+        self,
+        update: dns.update.Update,
+        zone: str,
+        response: dns.message.Message,
+    ) -> None:
+        """Interpret a DDNS response and emit change notifications (event-loop safe)."""
+        rcode = response.rcode()
+
+        if rcode == dns.rcode.NOERROR:
+            log_internal_event(
+                "ddns_update_success",
+                logger,
+                zone=zone,
+                server=self.server,
+            )
+            self._emit_change_event(
+                update,
+                zone,
+                event=EVENT_CHANGE_APPLIED,
+                rcode="NOERROR",
+            )
+            return
+
+        rcode_text = dns.rcode.to_text(rcode)
+
+        if rcode in (
+            dns.rcode.NXRRSET,
+            dns.rcode.YXRRSET,
+            dns.rcode.NXDOMAIN,
+            dns.rcode.YXDOMAIN,
+        ):
+            log_internal_event(
+                "ddns_prereq_failed",
+                logger,
+                level="WARNING",
+                zone=zone,
+                rcode=rcode_text,
+            )
+            self._emit_change_event(
+                update,
+                zone,
+                event=EVENT_CHANGE_FAILED,
+                rcode=rcode_text,
+                error=f"Prerequisite failed: {rcode_text}",
+            )
+            raise PrerequisiteFailedError(
+                f"Prerequisite failed: {rcode_text} - DNS state may have changed",
+                rcode=rcode,
+                rcode_text=rcode_text,
+            )
+
+        log_internal_event(
+            "ddns_update_failed",
+            logger,
+            level="ERROR",
+            zone=zone,
+            rcode=rcode_text,
+        )
+        self._emit_change_event(
+            update,
+            zone,
+            event=EVENT_CHANGE_FAILED,
+            rcode=rcode_text,
+            error=f"Update failed with rcode {rcode_text}",
+        )
+        raise UpdateError(f"Update failed with rcode {rcode_text}")
+
     def _send_update(self, update: dns.update.Update, zone: str) -> None:
-        """Send a DDNS update to the server.
+        """Send a DDNS update to the server (blocking; for sync callers).
 
         Args:
             update: The update message to send
@@ -837,76 +1050,8 @@ class DNSClient:
             UpdateError: If update fails for other reasons
         """
         try:
-            response = dns.query.tcp(
-                update,
-                self.server,
-                port=self.tcp_port,  # DDNS uses TCP
-                timeout=self.timeout,
-            )
-
-            rcode = response.rcode()
-
-            if rcode == dns.rcode.NOERROR:
-                log_internal_event(
-                    "ddns_update_success",
-                    logger,
-                    zone=zone,
-                    server=self.server,
-                )
-                self._emit_change_event(
-                    update,
-                    zone,
-                    event=EVENT_CHANGE_APPLIED,
-                    rcode="NOERROR",
-                )
-                return
-
-            rcode_text = dns.rcode.to_text(rcode)
-
-            # Check for prerequisite failures
-            if rcode in (
-                dns.rcode.NXRRSET,
-                dns.rcode.YXRRSET,
-                dns.rcode.NXDOMAIN,
-                dns.rcode.YXDOMAIN,
-            ):
-                log_internal_event(
-                    "ddns_prereq_failed",
-                    logger,
-                    level="WARNING",
-                    zone=zone,
-                    rcode=rcode_text,
-                )
-                self._emit_change_event(
-                    update,
-                    zone,
-                    event=EVENT_CHANGE_FAILED,
-                    rcode=rcode_text,
-                    error=f"Prerequisite failed: {rcode_text}",
-                )
-                raise PrerequisiteFailedError(
-                    f"Prerequisite failed: {rcode_text} - DNS state may have changed",
-                    rcode=rcode,
-                    rcode_text=rcode_text,
-                )
-
-            # Other errors
-            log_internal_event(
-                "ddns_update_failed",
-                logger,
-                level="ERROR",
-                zone=zone,
-                rcode=rcode_text,
-            )
-            self._emit_change_event(
-                update,
-                zone,
-                event=EVENT_CHANGE_FAILED,
-                rcode=rcode_text,
-                error=f"Update failed with rcode {rcode_text}",
-            )
-            raise UpdateError(f"Update failed with rcode {rcode_text}")
-
+            response = self._exchange_update(update)
+            self._handle_update_response(update, zone, response)
         except DNSException as e:
             if isinstance(e, PrerequisiteFailedError | UpdateError):
                 raise

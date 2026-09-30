@@ -43,6 +43,9 @@ For development, use the devcontainer which provides all required tools:
 
 See [DEVELOPMENT.md](DEVELOPMENT.md) for full setup instructions.
 
+Performance testing (opt-in, not CI): see [PERFORMANCE.md](PERFORMANCE.md)
+(`./perf.sh zone create --preset 100k` then `./perf.sh run ...`).
+
 ## Installation (Production)
 
 ```bash
@@ -358,7 +361,17 @@ Content-Type: application/json
 
 ## Error Responses
 
-- **409 Conflict**: PREREQ failed (DNS state changed externally)
+- **409 Conflict**: PREREQ failed (DNS state changed externally), or CNAME exclusivity conflict
 - **404 Not Found**: Zone or record not found
 - **400 Bad Request**: Invalid record data
 - **401/403**: Authentication/authorization failures
+
+### CNAME exclusivity
+
+A CNAME cannot coexist with other data at the same owner name. BIND may accept a conflicting DDNS add with `NOERROR` and silently ignore it; this API rejects those cases instead:
+
+- **Add CNAME**: requires the name to be unused (NXDOMAIN prerequisite).
+- **Add any other type**: requires that no CNAME exists at the name.
+- **Atomic / nsupdate / scheduled**: multi-op updates are simulated so `delete` then `add CNAME` in one transaction still works; adding both without a delete returns 409 (or a failed nsupdate transaction).
+
+To change type at a name, delete the existing RRset(s) first, or include those deletes in the same atomic/nsupdate transaction.

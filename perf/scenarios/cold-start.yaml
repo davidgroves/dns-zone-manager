@@ -1,0 +1,14 @@
+name: cold-start
+description: >
+  Time to /health and first successful rrsets list after instructing the
+  operator to restart the app (or auto-restart via docker when available).
+zone: perf5m.test
+provision: false
+require_zone: true
+cold_start:
+  restart: true
+  health_timeout: 120
+  list_timeout: 600
+notes:
+  - Restart uses `docker restart` on the configured container name when possible.
+  - Set PERF_APP_CONTAINER to override (default: dns-zone-manager_devcontainer-dev-1).

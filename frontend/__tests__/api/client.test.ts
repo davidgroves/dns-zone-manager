@@ -120,6 +120,14 @@ describe('formatDNSError', () => {
     expect(formatDNSError(error)).toBe('Invalid request');
   });
 
+  it('should surface CNAME exclusivity conflict detail', () => {
+    const error = {
+      detail:
+        'Cannot add CNAME at host.example.com.: name already has A. Delete those records first (or include deletes in the same atomic update).',
+    };
+    expect(formatDNSError(error)).toContain('already has A');
+  });
+
   it('should fall back to top-level message', () => {
     const error = {
       message: 'Connection failed',

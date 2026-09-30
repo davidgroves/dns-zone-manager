@@ -31,19 +31,23 @@ def _mock_dns_client():
     return client
 
 
-def _mock_cache(*, existing=None):
+def _mock_cache(*, existing=None, by_name=None):
     cache = MagicMock()
     cache.get_rrset.return_value = existing
     zone = MagicMock()
-    zone.get_rrsets_by_name.return_value = [existing] if existing else []
+    if by_name is not None:
+        zone.get_rrsets_by_name.side_effect = lambda name, rdclass=None: by_name.get(name, [])
+    else:
+        zone.get_rrsets_by_name.return_value = [existing] if existing else []
     zone.serial = 100
     cache.get_zone.return_value = zone
     return cache
 
 
-def _rrset(records=None):
+def _rrset(records=None, rdtype="A"):
     rr = MagicMock()
     rr.records = records or ["192.0.2.1"]
+    rr.rdtype = rdtype
     return rr
 
 
@@ -62,8 +66,11 @@ class TestBuildUpdate:
         )
         assert len(built.cache_updates) == 1
         assert built.cache_updates[0].action == "add"
-        assert len(built.auto_prerequisites) == 1
+        # Typed NXRRSET for A plus NXRRSET for CNAME exclusivity
+        assert len(built.auto_prerequisites) == 2
         assert built.auto_prerequisites[0].prereq_type == "nxrrset"
+        assert built.auto_prerequisites[0].rdtype == "A"
+        assert built.auto_prerequisites[1].rdtype == "CNAME"
 
     def test_add_fails_when_exists_and_validating(self):
         client = _mock_dns_client()
@@ -125,6 +132,65 @@ class TestBuildUpdate:
             auto_prerequisites=False,
         )
         assert built.cache_updates[0].action == "replace"
+
+    def test_cname_onto_existing_a_rejected(self):
+        client = _mock_dns_client()
+        a_rr = _rrset(rdtype="A")
+        cache = _mock_cache(existing=None, by_name={"www": [a_rr]})
+        cache.get_rrset.return_value = None
+        ops = [
+            AtomicOperation(
+                action="add",
+                name="www",
+                type="CNAME",
+                ttl=300,
+                records=["target.example.com."],
+            )
+        ]
+        with pytest.raises(UpdateBuildError) as exc:
+            build_update("example.com.", ops, client, cache, validate_cache_state=True)
+        assert exc.value.code == "CNAME_CONFLICT"
+
+    def test_delete_a_then_add_cname_ok(self):
+        client = _mock_dns_client()
+        a_rr = _rrset(rdtype="A")
+        cache = _mock_cache(existing=a_rr, by_name={"www": [a_rr]})
+
+        def get_rrset(zone, name, rdtype, rdclass="IN"):
+            if rdtype.upper() == "A":
+                return a_rr
+            return None
+
+        cache.get_rrset.side_effect = get_rrset
+        ops = [
+            AtomicOperation(action="delete", name="www", type="A", records=None),
+            AtomicOperation(
+                action="add",
+                name="www",
+                type="CNAME",
+                ttl=300,
+                records=["target.example.com."],
+            ),
+        ]
+        built = build_update("example.com.", ops, client, cache, validate_cache_state=True)
+        assert len(built.cache_updates) == 2
+
+    def test_add_a_and_cname_same_txn_rejected(self):
+        client = _mock_dns_client()
+        cache = _mock_cache(existing=None)
+        ops = [
+            AtomicOperation(action="add", name="www", type="A", ttl=300, records=["192.0.2.1"]),
+            AtomicOperation(
+                action="add",
+                name="www",
+                type="CNAME",
+                ttl=300,
+                records=["target.example.com."],
+            ),
+        ]
+        with pytest.raises(UpdateBuildError) as exc:
+            build_update("example.com.", ops, client, cache, validate_cache_state=True)
+        assert exc.value.code == "CNAME_CONFLICT"
 
 
 class TestPreview:

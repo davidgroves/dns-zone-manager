@@ -1,0 +1,13 @@
+name: mixed-read-write
+description: 100 writes/s via API plus concurrent readers against the large zone.
+zone: perf5m.test
+provision: false
+require_zone: true
+load:
+  mode: api
+  concurrency: 16
+  pool_size: 1000
+  readers: true
+  reader_rps: 5
+  steps:
+    - { rps: 100, duration: 120, label: "mixed@100", readers: true }

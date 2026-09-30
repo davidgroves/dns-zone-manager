@@ -43,6 +43,9 @@ options {
     
     // Use Unix timestamp for SOA serial numbers (automatic updates)
     serial-update-method unixtime;
+
+    // Allow rndc addzone for the performance harness (perf5m.test)
+    allow-new-zones yes;
 };
 
 // TSIG key for authenticated dynamic updates

@@ -1,0 +1,15 @@
+name: soak
+description: 30 minutes at 100 API writes/s; watch memory and BIND journal growth.
+zone: perf5m.test
+provision: false
+require_zone: true
+load:
+  mode: api
+  concurrency: 16
+  pool_size: 2000
+  readers: false
+  steps:
+    - { rps: 100, duration: 1800, label: "soak@100/30m" }
+notes:
+  - Compare cache_size_bytes and docker mem_usage before/after.
+  - BIND journals live next to the zone file under /perf-zones.

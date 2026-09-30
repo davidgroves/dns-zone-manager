@@ -25,6 +25,8 @@ services:
       # Mount zones as read-only source, copy to writable location at startup
       - ./bind/zones:/etc/bind/zones-source:ro
       - bind-zones:/var/lib/bind
+      # On-demand large zones for the performance harness (shared with perf-runner)
+      - perf-zones:/perf-zones
     ports:
       - "15353:53/tcp"
       - "15353:53/udp"
@@ -43,6 +45,8 @@ services:
         set -e
         cp /etc/bind/zones-source/* /var/lib/bind/
         chmod 666 /var/lib/bind/*
+        mkdir -p /perf-zones
+        chmod 777 /perf-zones
 
         # Start with an empty also-notify so named can boot before the API.
         echo 'also-notify { };' > /var/lib/bind/also-notify.conf
@@ -125,6 +129,7 @@ services:
     volumes:
       # Mount config file (copy config.example.yaml to config.yaml and customize)
       - ./config.yaml:/app/config.yaml:ro
+      - perf-zones:/perf-zones:ro
     environment:
       # Ship structured logs to Loki via the LGTM OTLP collector
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://lgtm:4318
@@ -211,6 +216,7 @@ services:
       - ./observability/otelcol-config.yaml:/otel-lgtm/otelcol-config.yaml:ro
       - ./observability/dashboards/provisioning.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/custom.yaml:ro
       - ./observability/dashboards/dns-zone-manager.json:/otel-lgtm/grafana/conf/provisioning/dashboards/custom/dns-zone-manager.json:ro
+      - ./observability/dashboards/performance.json:/otel-lgtm/grafana/conf/provisioning/dashboards/custom/performance.json:ro
       - lgtm-data:/data
     networks:
       - dns-network
@@ -218,6 +224,40 @@ services:
       dns-zone-manager:
         condition: service_healthy
     restart: unless-stopped
+
+  # Opt-in performance harness runner (has dig/nsupdate/rndc/uv from the
+  # .devcontainer image). Example:
+  #   docker compose --profile perf run --rm perf-runner ./perf.sh list
+  #   docker compose --profile perf run --rm perf-runner ./perf.sh zone create --preset 100k
+  perf-runner:
+    profiles: ["perf"]
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+    working_dir: /workspace
+    volumes:
+      - ..:/workspace:cached
+      - perf-zones:/perf-zones
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - TZ=UTC
+      - API_BASE=http://dns-zone-manager:8000
+      - API_KEY=demo-api-key-12345
+      - BIND_HOST=bind
+      - BIND_PORT=53
+      - TSIG_NAME=dns-api-key
+      - TSIG_SECRET=K8vC2mP9nQ4rT6wX1yB3fG5hJ7kL0mN2pR4sU6vW8xY=
+      - TSIG_ALG=hmac-sha256
+      - PERF_APP_CONTAINER=dns-zone-manager
+    networks:
+      - dns-network
+    depends_on:
+      bind:
+        condition: service_healthy
+      dns-zone-manager:
+        condition: service_healthy
+    entrypoint: ["bash", "-lc"]
+    command: ["./perf.sh list"]
 
 networks:
   # No static subnet: Docker assigns an available subnet automatically so the
@@ -229,3 +269,4 @@ volumes:
   bind-zones:
   postgres-data:
   lgtm-data:
+  perf-zones:

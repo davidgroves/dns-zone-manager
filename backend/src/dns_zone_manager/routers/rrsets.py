@@ -12,6 +12,10 @@ from dns_zone_manager.dns.client import (
     PrerequisiteFailedError,
     UpdateError,
 )
+from dns_zone_manager.dns.cname_exclusivity import (
+    conflicting_types_for_add,
+    format_cname_conflict_message,
+)
 from dns_zone_manager.dns.idn import get_idn_info, get_records_utf8_info
 from dns_zone_manager.dns.types import (
     UPDATABLE_TYPES,
@@ -205,6 +209,7 @@ async def add_rrset(
 
     The operation will fail with 409 Conflict if:
     - The RRset already exists (unless prereq check is disabled)
+    - Adding a CNAME at a name that already has other data (or vice versa)
     - The DNS server state has changed since the last cache refresh
 
     Args:
@@ -250,9 +255,35 @@ async def add_rrset(
             detail=f"RRset {request.name} {rdclass} {rdtype} already exists in zone {zone}",
         )
 
+    # CNAME exclusivity (cache UX); live DDNS prereqs in add_rrset are authoritative.
+    cached_zone = zone_cache.get_zone(zone)
+    if cached_zone is not None:
+        existing_types = {
+            rr.rdtype.upper() for rr in cached_zone.get_rrsets_by_name(request.name, rdclass)
+        }
+        conflicts = conflicting_types_for_add(existing_types, rdtype)
+        if conflicts:
+            fqdn = str(dns_client.normalize_name(request.name, zone))
+            message = format_cname_conflict_message(fqdn, rdtype, conflicts)
+            enrich_error_context(
+                http_request,
+                error_type="ConflictError",
+                message=message,
+                code="CNAME_CONFLICT",
+                details={
+                    "name": fqdn,
+                    "rdtype": rdtype,
+                    "conflicting_types": conflicts,
+                },
+            )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=message,
+            )
+
     try:
         # Perform DDNS update with prerequisite check
-        dns_client.add_rrset(
+        await dns_client.add_rrset_async(
             zone=zone,
             name=request.name,
             ttl=request.ttl,
@@ -409,7 +440,7 @@ async def delete_rrset(
 
     try:
         # Perform DDNS update with prerequisite
-        dns_client.delete_rrset(
+        await dns_client.delete_rrset_async(
             zone=zone,
             name=request.name,
             rdtype=rdtype,
@@ -544,7 +575,7 @@ async def replace_rrset(
 
     try:
         # Perform DDNS update with prerequisite
-        dns_client.replace_rrset(
+        await dns_client.replace_rrset_async(
             zone=zone,
             name=request.name,
             ttl=request.ttl,

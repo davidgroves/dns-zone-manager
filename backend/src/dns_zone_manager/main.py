@@ -247,7 +247,7 @@ async def _handle_zone_notify(zone_name: str) -> None:
             zone=zone_name,
             current_serial=cached.serial,
         )
-        refreshed, operations = zone_cache.refresh_zone_with_ops(zone_name)
+        refreshed, operations = await asyncio.to_thread(zone_cache.refresh_zone_with_ops, zone_name)
         if zone_change_hub is None:
             return
         if operations is None:
@@ -407,6 +407,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     reverse.set_zone_cache(zone_cache)
     search.set_zone_cache(zone_cache)
     nsupdate.set_dns_client(dns_client)
+    nsupdate.set_zone_cache(zone_cache)
     atomic.set_dns_client(dns_client)
     atomic.set_zone_cache(zone_cache)
     history.set_dns_client(dns_client)
@@ -632,6 +633,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     if scheduled_store:
         await scheduled_store.close()
         log_internal_event("scheduler_store_closed", logger)
+
+    # Stop DNS I/O thread pool
+    if dns_client is not None:
+        dns_client.close()
 
     # Stop sync task
     if sync_task:

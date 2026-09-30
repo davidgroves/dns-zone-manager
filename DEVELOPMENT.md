@@ -239,6 +239,20 @@ npx playwright test --project=webkit
 npx playwright test --project=ipad
 ```
 
+## Performance Testing
+
+Opt-in harness under `perf/` — **not** part of CI or pre-commit. See
+[PERFORMANCE.md](PERFORMANCE.md).
+
+```bash
+./perf.sh zone create --preset 100k   # or 1m / 5m
+./perf.sh run large-zone-load --preset 100k
+./perf.sh run rapid-api-writes
+./perf.sh zone destroy --delete-file
+```
+
+VS Code tasks: **PERF: Create 5M zone**, **PERF: Run all**, **PERF: Destroy zone**.
+
 ## CI/CD (GitHub Actions)
 
 Workflows live in `.github/workflows/`.

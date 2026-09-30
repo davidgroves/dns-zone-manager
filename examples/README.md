@@ -111,6 +111,17 @@ docker compose logs -f zone-churn
 
 API-lane updates use `X-API-Key: demo-api-key-12345`. When webhooks are enabled in the API config, those writes are also recorded as Manual scheduled/audit rows.
 
+### Performance harness
+
+Large-zone generation and write ramps live in the repo-root `perf/` package
+(see [PERFORMANCE.md](../PERFORMANCE.md)). An opt-in `perf-runner` service
+shares the `perf-zones` volume with BIND:
+
+```bash
+docker compose --profile perf run --rm perf-runner ./perf.sh zone create --preset 100k
+docker compose --profile perf run --rm perf-runner ./perf.sh run rapid-api-writes
+```
+
 ## Catalog Zone Auto-Discovery
 
 This example environment includes a catalog zone (`catalog.example`) configured per RFC 9432. The catalog zone automatically discovers and loads member zones.

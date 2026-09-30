@@ -1,0 +1,18 @@
+name: rapid-api-writes
+description: Ramp REST API writes from 50 to 500/s (60s per step).
+zone: perf5m.test
+provision: false
+require_zone: true
+load:
+  mode: api
+  concurrency: 32
+  pool_size: 2000
+  readers: false
+  steps:
+    - { rps: 50, duration: 60, label: "api@50" }
+    - { rps: 100, duration: 60, label: "api@100" }
+    - { rps: 250, duration: 60, label: "api@250" }
+    - { rps: 500, duration: 60, label: "api@500" }
+notes:
+  - DDNS updates are offloaded to a thread pool (event loop no longer blocked per update).
+  - Each write still opens a new TCP connection to BIND (no connection reuse yet).

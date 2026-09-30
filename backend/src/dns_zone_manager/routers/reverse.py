@@ -355,12 +355,12 @@ async def create_reverse_ptr(
                 elif request.mode == CreateMode.REPLACE:
                     # Delete existing and add new
                     try:
-                        dns_client.delete_rrset(
+                        await dns_client.delete_rrset_async(
                             zone=reverse_zone,
                             name=record_name,
                             rdtype="PTR",
                         )
-                        dns_client.add_rrset(
+                        await dns_client.add_rrset_async(
                             zone=reverse_zone,
                             name=record_name,
                             ttl=request.ttl,
@@ -414,7 +414,7 @@ async def create_reverse_ptr(
 
                     try:
                         new_records = existing_ptrs + [ptr_target]
-                        dns_client.replace_rrset(
+                        await dns_client.replace_rrset_async(
                             zone=reverse_zone,
                             name=record_name,
                             ttl=request.ttl,
@@ -454,7 +454,7 @@ async def create_reverse_ptr(
             else:
                 # No existing PTR - create new
                 try:
-                    dns_client.add_rrset(
+                    await dns_client.add_rrset_async(
                         zone=reverse_zone,
                         name=record_name,
                         ttl=request.ttl,

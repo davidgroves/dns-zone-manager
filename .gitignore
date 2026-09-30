@@ -383,3 +383,7 @@ test-results/
 test-coverage/
 playwright-report/
 .tmp/
+# Performance harness outputs
+perf/results/*
+!perf/results/.gitkeep
+.tmp/perf/

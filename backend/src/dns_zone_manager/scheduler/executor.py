@@ -90,7 +90,7 @@ async def execute_change(
             change_name=change.name,
             actor=actor,
         ):
-            dns_client._send_update(built.update, zone)
+            await dns_client.send_update_async(built.update, zone)
 
         apply_cache_updates(zone, built.cache_updates, zone_cache)
         for cu in built.cache_updates:

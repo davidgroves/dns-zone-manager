@@ -80,6 +80,39 @@
       "problemMatcher": []
     },
     {
+      "label": "PERF: Create 5M zone",
+      "type": "shell",
+      "command": "API_BASE=http://127.0.0.1:8000 BIND_HOST=bind BIND_PORT=15353 ./perf.sh zone create --preset 5m",
+      "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "PERF: Run all",
+      "type": "shell",
+      "command": "API_BASE=http://127.0.0.1:8000 BIND_HOST=bind BIND_PORT=15353 ./perf.sh run all",
+      "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "PERF: Destroy zone",
+      "type": "shell",
+      "command": "API_BASE=http://127.0.0.1:8000 BIND_HOST=bind BIND_PORT=15353 ./perf.sh zone destroy --delete-file",
+      "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
       "label": "Run All",
       "dependsOn": ["BACKEND", "FRONTEND", "BIND", "POSTGRES"],
       "dependsOrder": "parallel",

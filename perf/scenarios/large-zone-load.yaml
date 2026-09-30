@@ -1,0 +1,21 @@
+name: large-zone-load
+description: >
+  Generate and provision a large zone (default 5M records), measure BIND load
+  time, AXFR into the app cache, memory, and cold read latencies.
+zone: perf5m.test
+records: 5000000
+preset: null
+seed: 42
+provision: true
+skip_generate: false
+skip_cache_refresh: false
+load: null
+cold_reads: true
+reader_ops:
+  - first_page
+  - deep_page
+  - search
+  - zone_list
+  - export
+notes:
+  - List/search currently materialize and sort the full zone; expect high latency at 5M.

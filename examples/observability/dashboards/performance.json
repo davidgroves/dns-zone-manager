@@ -1,0 +1,265 @@
+{
+  "uid": "dns-zone-manager-performance",
+  "title": "DNS Zone Manager — Performance",
+  "description": "Write throughput, zone transfers, cache size, and live WebSocket fan-out for performance runs. Uses existing /metrics only.",
+  "tags": ["dns-zone-manager", "performance", "lgtm"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "time": { "from": "now-30m", "to": "now" },
+  "templating": { "list": [] },
+  "annotations": {
+    "list": [
+      {
+        "name": "Perf run",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "enable": true,
+        "iconColor": "red",
+        "expr": "changes(dns_zone_manager_ddns_updates_successful_total[1m]) > 0",
+        "titleFormat": "DDNS activity"
+      }
+    ]
+  },
+  "editable": true,
+  "graphTooltip": 1,
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Write throughput",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "DDNS updates / sec",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(dns_zone_manager_ddns_updates_successful_total[1m])",
+          "legendFormat": "success"
+        },
+        {
+          "refId": "B",
+          "expr": "rate(dns_zone_manager_ddns_updates_failed_total[1m])",
+          "legendFormat": "failed"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "spanNulls": true }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "RRset mutations / sec",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(dns_zone_manager_rrset_adds_total[1m])",
+          "legendFormat": "adds"
+        },
+        {
+          "refId": "B",
+          "expr": "rate(dns_zone_manager_rrset_deletes_total[1m])",
+          "legendFormat": "deletes"
+        },
+        {
+          "refId": "C",
+          "expr": "rate(dns_zone_manager_rrset_replaces_total[1m])",
+          "legendFormat": "replaces"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "spanNulls": true }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "row",
+      "title": "Transfers & NOTIFY",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Zone transfers / sec by method",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 10 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (method) (rate(dns_zone_manager_zone_transfers_total[1m]))",
+          "legendFormat": "{{method}}"
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (method) (rate(dns_zone_manager_zone_transfers_failed_total[1m]))",
+          "legendFormat": "failed {{method}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "spanNulls": true }
+        }
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "NOTIFYs / sec",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 10 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(dns_zone_manager_notifies_received_total[1m])",
+          "legendFormat": "received"
+        },
+        {
+          "refId": "B",
+          "expr": "rate(dns_zone_manager_notifies_rejected_total[1m])",
+          "legendFormat": "rejected"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "spanNulls": true }
+        }
+      }
+    },
+    {
+      "id": 7,
+      "type": "row",
+      "title": "Cache & live",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Cache size (bytes)",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 19 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "dns_zone_manager_cache_size_bytes",
+          "legendFormat": "cache"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "spanNulls": true }
+        }
+      }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "WebSocket subscribers",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 19 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "dns_zone_manager_zone_ws_subscribers",
+          "legendFormat": "subscribers"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "spanNulls": true }
+        }
+      }
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "WS broadcasts & slow-client drops / sec",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 19 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(dns_zone_manager_zone_ws_broadcasts_total[1m])",
+          "legendFormat": "broadcasts"
+        },
+        {
+          "refId": "B",
+          "expr": "rate(dns_zone_manager_zone_ws_slow_client_drops_total[1m])",
+          "legendFormat": "slow drops"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "spanNulls": true }
+        }
+      }
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Webhook queue depth",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 27 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "dns_zone_manager_webhook_queue_depth",
+          "legendFormat": "queue"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "spanNulls": true }
+        }
+      }
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Cache evictions / sec",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 27 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(dns_zone_manager_cache_evictions_total[1m])",
+          "legendFormat": "evictions"
+        },
+        {
+          "refId": "B",
+          "expr": "rate(dns_zone_manager_cache_zone_rejected_total[1m])",
+          "legendFormat": "rejected"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "spanNulls": true }
+        }
+      }
+    }
+  ]
+}

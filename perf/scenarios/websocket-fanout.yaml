@@ -1,0 +1,15 @@
+name: websocket-fanout
+description: 100 then 500 WebSocket subscribers during 100 API writes/s.
+zone: perf5m.test
+provision: false
+require_zone: true
+load:
+  mode: api
+  concurrency: 16
+  pool_size: 1000
+  readers: false
+  steps:
+    - { rps: 100, duration: 60, label: "ws@100subs", websocket_count: 100 }
+    - { rps: 100, duration: 60, label: "ws@500subs", websocket_count: 500 }
+notes:
+  - Live hub fans out sequentially; slow clients are dropped after send_timeout.

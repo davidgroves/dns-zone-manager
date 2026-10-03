@@ -37,7 +37,7 @@ RUN curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /
     && rm -rf /var/lib/apt/lists/*
 
 # uv package manager
-COPY --from=ghcr.io/astral-sh/uv:0.12.19 /uv /uvx /usr/local/bin/
+COPY --from=ghcr.io/astral-sh/uv:0.12.23 /uv /uvx /usr/local/bin/
 
 # DNS configuration files for easier CLI usage
 # rndc.conf: allows 'rndc status' without -c flag
